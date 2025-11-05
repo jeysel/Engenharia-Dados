@@ -16,7 +16,7 @@ http://localhost:8080
 
 **Credenciais**:
 - Usuário: `admin`
-- Senha: `jpb99`
+- Senha: Configurada no entrypoint do Airflow (ver arquivo `entrypoint/entrypoint.sh`)
 
 ### 4️⃣ Executar DAG
 Na interface do Airflow, clique na DAG `real-time-etl-stack` e execute (botão "Trigger DAG" ou ícone de play).

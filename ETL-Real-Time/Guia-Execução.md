@@ -232,9 +232,9 @@ Abra o navegador e acesse:
 http://localhost:8080
 ```
 
-**Credenciais padrão** (se configurado):
+**Credenciais**:
 - Username: `admin`
-- Password: `admin`
+- Password: Configurada no arquivo `servidor/entrypoint/entrypoint.sh`
 
 ### 5.2 Localizar a DAG
 
