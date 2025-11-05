@@ -351,7 +351,8 @@ if __name__ == "__main__":
     stream_mode = "earliest" if args.mode == "initial" else "latest"
 
     # Define os tópicos Kafka para consumir dados de segurança pública
-    topicos_kafka = "sinesp_ocorrencias_municipio,sinesp_ocorrencias_estado,sinesp_ocorrencias_geral"
+    # TEMPORÁRIO: Consumindo apenas município enquanto testa com dados de exemplo
+    topicos_kafka = "sinesp_ocorrencias_municipio"
 
     # Cria conexões com o Cassandra e Spark
     session = cria_cassandra_connection()

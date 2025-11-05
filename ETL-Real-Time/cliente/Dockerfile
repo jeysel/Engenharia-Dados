@@ -1,5 +1,5 @@
-# Usa imagem oficial do Bitnami Spark que já tem tudo configurado
-FROM bitnami/spark:3.5.4
+# Usa imagem oficial do Apache Spark
+FROM apache/spark:3.5.0
 
 # Muda para usuário root para instalar dependências
 USER root
@@ -16,10 +16,7 @@ RUN mkdir -p /app
 COPY consumer_stream.py /app/consumer_stream.py
 
 # Define permissões corretas
-RUN chown -R 1001:1001 /app
-
-# Volta para o usuário padrão do Spark
-USER 1001
+RUN chmod -R 755 /app
 
 # Configura diretório de trabalho
 WORKDIR /app
@@ -29,4 +26,4 @@ ENV PYSPARK_PYTHON=python3
 ENV PYSPARK_DRIVER_PYTHON=python3
 
 # Comando padrão (será sobrescrito pelo docker-compose)
-CMD ["spark-submit", "--help"]
+CMD ["/opt/spark/bin/spark-submit", "--help"]

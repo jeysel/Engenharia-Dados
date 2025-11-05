@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: ssp-sc-postgres-new
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-ssp_sc_db}
+    volumes:
+      - postgres_data_new:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    networks:
+      - ssp-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  extrator:
+    build:
+      context: ./extrator
+      dockerfile: Dockerfile.new
+    container_name: ssp-sc-extrator-new
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-ssp_sc_db}
+      PYTHONUNBUFFERED: 1
+    volumes:
+      - ./extrator/data:/app/data
+      - ./extrator:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ssp-network
+    restart: unless-stopped
+    command: python scheduler_new.py
+
+  visualizacao:
+    build:
+      context: ./visualizacao
+      dockerfile: Dockerfile
+    container_name: ssp-sc-visualizacao-new
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-ssp_sc_db}
+    ports:
+      - "${VISUALIZACAO_PORT:-5000}:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ssp-network
+    restart: unless-stopped
+    command: python app_new.py
+
+networks:
+  ssp-network:
+    driver: bridge
+
+volumes:
+  postgres_data_new:

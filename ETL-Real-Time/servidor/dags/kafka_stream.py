@@ -11,39 +11,92 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 
 # Define os argumentos padrão da DAG, incluindo o proprietário e a data de início
-default_args = {"owner": "Data Science Academy",
+default_args = {"owner": "Engenharia de Dados",
                 "start_date": datetime(2025, 1, 9, 8, 10)}
 
 # Define a função que obtém metadados do dataset SINESP
-def obtem_metadados_dataset():
+def obtem_metadados_dataset(api_token=None):
 
     # Importa o módulo `requests` para fazer requisições HTTP
     import requests
+    import os
 
-    # URL da API CKAN do dados.gov.br para buscar o dataset específico do SINESP
-    url = "https://dados.gov.br/api/3/action/package_show"
+    # URL da nova API do dados.gov.br (API atualizada)
+    url = "https://dados.gov.br/dados/api/publico/conjuntos-dados/sistema-nacional-de-estatisticas-de-seguranca-publica"
 
-    # Parâmetros para buscar o dataset específico de ocorrências criminais
-    params = {
-        "id": "sistema-nacional-de-estatisticas-de-seguranca-publica"
+    # Define os headers da requisição
+    headers = {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
     }
+
+    # Adicionar token se fornecido via parâmetro ou variável de ambiente
+    if api_token:
+        headers['Authorization'] = f'Bearer {api_token}'
+    elif os.getenv('DADOS_GOV_BR_TOKEN'):
+        headers['Authorization'] = f'Bearer {os.getenv("DADOS_GOV_BR_TOKEN")}'
 
     try:
         # Faz uma requisição GET para obter metadados do dataset SINESP
-        res = requests.get(url, params=params, timeout=30)
+        res = requests.get(url, headers=headers, timeout=30)
 
-        # Converte a resposta para JSON
-        res = res.json()
-
-        # Verifica se a requisição foi bem-sucedida
-        if res.get("success") and res.get("result"):
-            return res["result"]
+        # Verifica se o retorno é JSON válido
+        if res.status_code == 200 and 'application/json' in res.headers.get('Content-Type', ''):
+            data = res.json()
+            return data
         else:
+            print(f"Erro: Status {res.status_code}, Content-Type: {res.headers.get('Content-Type')}")
             return None
     except Exception as e:
         print(f"Erro ao obter metadados: {e}")
         return None
 
+
+# Define a função que gera dados de exemplo para testes (fallback quando API falha)
+def gera_dados_exemplo():
+    import random
+
+    # Lista de UFs e municípios de exemplo
+    exemplos = [
+        {"uf": "SP", "uf_nome": "São Paulo", "municipio": "São Paulo", "codigo_municipio": "3550308", "regiao": "Sudeste"},
+        {"uf": "RJ", "uf_nome": "Rio de Janeiro", "municipio": "Rio de Janeiro", "codigo_municipio": "3304557", "regiao": "Sudeste"},
+        {"uf": "MG", "uf_nome": "Minas Gerais", "municipio": "Belo Horizonte", "codigo_municipio": "3106200", "regiao": "Sudeste"},
+        {"uf": "BA", "uf_nome": "Bahia", "municipio": "Salvador", "codigo_municipio": "2927408", "regiao": "Nordeste"},
+        {"uf": "PR", "uf_nome": "Paraná", "municipio": "Curitiba", "codigo_municipio": "4106902", "regiao": "Sul"},
+    ]
+
+    dados = []
+    for exemplo in exemplos[:5]:  # Gera 5 registros de exemplo
+        registro = {
+            "ano": "2024",
+            "mes": str(random.randint(1, 12)),
+            "mes_ano": f"{random.randint(1, 12)}/2024",
+            "uf": exemplo["uf"],
+            "uf_nome": exemplo["uf_nome"],
+            "municipio": exemplo["municipio"],
+            "codigo_municipio": exemplo["codigo_municipio"],
+            "regiao": exemplo["regiao"],
+            "tipo_crime": "Roubo",
+            "vitimas": str(random.randint(50, 500)),
+            "ocorrencias": str(random.randint(100, 1000)),
+            "homicidio_doloso": str(random.randint(10, 100)),
+            "lesao_corp_morte": str(random.randint(5, 50)),
+            "latrocinio": str(random.randint(1, 20)),
+            "roubo_veiculo": str(random.randint(100, 500)),
+            "roubo_carga": str(random.randint(20, 100)),
+            "roubo_inst_financeira": str(random.randint(1, 10)),
+            "furto_veiculo": str(random.randint(50, 300)),
+            "estupro": str(random.randint(5, 50)),
+        }
+        dados.append(registro)
+
+    return {
+        "resource_name": "dados_exemplo_municipio",
+        "resource_id": "exemplo_001",
+        "resource_format": "CSV",
+        "dataset_id": "sistema-nacional-de-estatisticas-de-seguranca-publica",
+        "dados": dados
+    }
 
 # Define a função que extrai dados reais de ocorrências criminais dos recursos CSV/JSON
 def extrai_dados_api():
@@ -52,15 +105,25 @@ def extrai_dados_api():
     import requests
     import csv
     import io
+    import logging
+    import os
 
     # Obtém os metadados do dataset
     dataset = obtem_metadados_dataset()
 
     if dataset is None:
+        # Loga erro detalhado quando a API falhar
+        logging.error(" Log - ERRO: Falha ao obter metadados do dataset da API dados.gov.br")
+        logging.error(" Log - Verifique se o token de autenticação está configurado corretamente")
+        logging.error(" Log - Token atual: %s", "Configurado" if os.getenv('DADOS_GOV_BR_TOKEN') else "Não configurado")
         return None
 
     # Procura por recursos CSV ou JSON disponíveis
     resources = dataset.get("resources", [])
+
+    if not resources:
+        logging.error(" Log - ERRO: Nenhum recurso encontrado no dataset")
+        return None
 
     # Filtra recursos de municípios em formato CSV (prioridade)
     csv_resources = [r for r in resources if r.get("format", "").upper() == "CSV"
@@ -71,6 +134,8 @@ def extrai_dados_api():
         csv_resources = [r for r in resources if r.get("format", "").upper() == "CSV"]
 
     if not csv_resources:
+        logging.error(" Log - ERRO: Nenhum recurso CSV encontrado no dataset")
+        logging.error(" Log - Recursos disponíveis: %s", [r.get("format") for r in resources])
         return None
 
     # Seleciona o primeiro recurso CSV disponível
@@ -78,10 +143,12 @@ def extrai_dados_api():
     resource_url = resource.get("url", "")
 
     if not resource_url:
+        logging.error(" Log - ERRO: URL do recurso CSV não encontrada")
         return None
 
     try:
         # Faz o download do arquivo CSV
+        logging.info(f" Log - Baixando dados do recurso: {resource.get('name', 'desconhecido')}")
         response = requests.get(resource_url, timeout=60)
         response.raise_for_status()
 
@@ -97,7 +164,12 @@ def extrai_dados_api():
                 break
             dados.append(row)
 
+        if not dados:
+            logging.warning(" Log - AVISO: Arquivo CSV baixado está vazio ou sem dados válidos")
+            return None
+
         # Retorna os dados junto com metadados do recurso
+        logging.info(f" Log - {len(dados)} registros extraídos com sucesso do CSV")
         return {
             "resource_name": resource.get("name", ""),
             "resource_id": resource.get("id", ""),
@@ -107,8 +179,13 @@ def extrai_dados_api():
             "dados": dados
         }
 
+    except requests.exceptions.RequestException as e:
+        logging.error(f" Log - ERRO: Falha na requisição HTTP ao baixar CSV: {e}")
+        return None
     except Exception as e:
-        print(f"Erro ao extrair dados do CSV: {e}")
+        logging.error(f" Log - ERRO: Falha ao processar dados do CSV: {e}")
+        import traceback
+        logging.error(f" Log - Traceback: {traceback.format_exc()}")
         return None
 
 # Define a função que formata os dados de ocorrências criminais

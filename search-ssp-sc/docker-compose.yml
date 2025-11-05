@@ -1,0 +1,72 @@
+services:
+  # Banco de Dados PostgreSQL
+  postgres:
+    image: postgres:16-alpine
+    container_name: ssp-sc-postgres
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: ssp_sc_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - ssp-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d ssp_sc_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Extrator de Dados
+  extrator:
+    build:
+      context: ./extrator
+      dockerfile: Dockerfile
+    container_name: ssp-sc-extrator
+    environment:
+      DATABASE_URL: postgresql://user:password@postgres:5432/ssp_sc_db
+      EXTRACTION_INTERVAL: 3600
+    volumes:
+      - ./extrator/data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ssp-network
+    restart: "no"
+    profiles:
+      - manual
+
+  # Sistema de Visualização
+  visualizacao:
+    build:
+      context: ./visualizacao
+      dockerfile: Dockerfile
+    container_name: ssp-sc-visualizacao
+    environment:
+      DATABASE_URL: postgresql://user:password@postgres:5432/ssp_sc_db
+      FLASK_ENV: production
+      FLASK_DEBUG: 'False'
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ssp-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  ssp-network:
+    driver: bridge

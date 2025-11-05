@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  # Banco de Dados PostgreSQL
+  postgres:
+    image: postgres:16-alpine
+    container_name: ssp-sc-postgres
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: ssp_sc_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - ssp-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d ssp_sc_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Extrator Autônomo (SEM Selenium/Chrome)
+  extrator:
+    build:
+      context: ./extrator
+      dockerfile: Dockerfile.autonomous
+    container_name: ssp-sc-extrator-autonomous
+    environment:
+      DATABASE_URL: postgresql://user:password@postgres:5432/ssp_sc_db
+      EXTRACTION_INTERVAL: 3600
+      DATA_DIR: /app/data
+      PYTHONUNBUFFERED: 1
+    volumes:
+      - ./extrator/data:/app/data
+      - ./extrator/logs:/var/log
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ssp-network
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Sistema de Visualização
+  visualizacao:
+    build:
+      context: ./visualizacao
+      dockerfile: Dockerfile
+    container_name: ssp-sc-visualizacao
+    environment:
+      DATABASE_URL: postgresql://user:password@postgres:5432/ssp_sc_db
+      FLASK_ENV: production
+      FLASK_DEBUG: 'False'
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ssp-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  ssp-network:
+    driver: bridge
