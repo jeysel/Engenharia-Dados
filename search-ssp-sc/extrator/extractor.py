@@ -1,24 +1,24 @@
 """
-Extrator de Dados da SSP-SC (Segurança Pública de Santa Catarina)
-Extrai dados de segurança pública do site oficial da SSP-SC
-Versão Python puro - sem Selenium/Chrome
+Novo Extrator de Dados da SSP-SC
+Extrai dados de PDFs (Boletim Mensal) e arquivos XLS (Violência Doméstica)
 """
 
 import os
 import io
-import time
-import json
 import re
+import json
 import logging
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
 import pdfplumber
-import tabula
+import urllib3
+
+from database_models import Base, Roubo, Furto, MortesViolentas, Homicidio, ViolenciaDomestica, HistoricoExecucao
 
 # Configuração de logging
 logging.basicConfig(
@@ -27,26 +27,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-Base = declarative_base()
-
-class DadosSeguranca(Base):
-    """Modelo de dados para armazenar informações de segurança"""
-    __tablename__ = 'dados_seguranca'
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    data_coleta = Column(DateTime, default=datetime.now)
-    tipo_ocorrencia = Column(String(200))
-    municipio = Column(String(200))
-    regiao = Column(String(100))
-    periodo = Column(String(100))
-    quantidade = Column(Integer)
-    ano = Column(Integer)
-    mes = Column(Integer, nullable=True)
-    dados_brutos = Column(Text)
+# Desabilitar avisos SSL
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
-class SSPSCExtractor:
-    """Extrator de dados do site da SSP-SC - Python puro"""
+class SSPSCExtractorNew:
+    """Novo extrator de dados da SSP-SC"""
 
     def __init__(self, db_url: str = None):
         """
@@ -56,49 +42,26 @@ class SSPSCExtractor:
             db_url: URL de conexão com o banco de dados PostgreSQL
         """
         self.base_url = "https://ssp.sc.gov.br/segurancaemnumeros/"
-        self.api_url = "https://ssp.sc.gov.br"  # Base para possíveis APIs
         self.db_url = db_url or os.getenv(
             'DATABASE_URL',
             'postgresql://user:password@postgres:5432/ssp_sc_db'
         )
         self.output_dir = '/app/data'
 
-        # Configurar sessão HTTP
-        self.session = None
-        self._setup_session()
-
         # Criar diretório de saída se não existir
         os.makedirs(self.output_dir, exist_ok=True)
 
+        # Configurar sessão HTTP
+        self.session = requests.Session()
+        self.session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'pt-BR,pt;q=0.9',
+        })
+        self.session.verify = False
+
         # Inicializar banco de dados
         self._init_database()
-
-    def _setup_session(self):
-        """Configura a sessão HTTP com headers apropriados"""
-        self.http_session = requests.Session()
-
-        # Headers para simular um navegador real
-        self.http_session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-            'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
-            'Sec-Fetch-Dest': 'document',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'none',
-            'Cache-Control': 'max-age=0'
-        })
-
-        # Desabilitar verificação SSL (apenas para desenvolvimento)
-        self.http_session.verify = False
-
-        # Suprimir avisos de SSL
-        import urllib3
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-        logger.info("Sessão HTTP configurada")
 
     def _init_database(self):
         """Inicializa conexão com banco de dados"""
@@ -112,685 +75,794 @@ class SSPSCExtractor:
             logger.error(f"Erro ao conectar ao banco de dados: {e}")
             self.db_session = None
 
-    def _process_excel_file(self, content: bytes, filename: str) -> List[Dict]:
+    def descobrir_links_boletins(self) -> Dict[int, List[str]]:
         """
-        Processa arquivo Excel e extrai dados estruturados
-
-        Args:
-            content: Conteúdo binário do arquivo Excel
-            filename: Nome do arquivo para identificação
+        Descobre todos os links de boletins mensais disponíveis por ano
 
         Returns:
-            Lista de dicionários com dados extraídos
+            Dicionário com ano -> lista de URLs dos PDFs
         """
-        dados_extraidos = []
+        boletins = {}
 
         try:
-            # Ler arquivo Excel
-            df = pd.read_excel(io.BytesIO(content), engine='openpyxl')
+            logger.info(f"Acessando {self.base_url} para descobrir boletins")
+            response = self.session.get(self.base_url, timeout=30)
+            response.raise_for_status()
 
-            logger.info(f"Excel lido: {len(df)} linhas, {len(df.columns)} colunas")
-            logger.info(f"Colunas encontradas: {list(df.columns)}")
+            soup = BeautifulSoup(response.content, 'html.parser')
 
-            # Normalizar nomes das colunas (converter para string primeiro)
-            df.columns = [str(col).strip().lower() if not isinstance(col, (int, float)) else str(col)
-                         for col in df.columns]
+            # Procurar por links de PDFs do boletim mensal
+            links = soup.find_all('a', href=True)
 
-            # Tentar identificar e mapear colunas relevantes
-            column_mapping = self._identify_columns(df.columns.tolist())
+            for link in links:
+                href = link['href']
+                texto = link.get_text().strip()
 
-            if not column_mapping:
-                logger.warning(f"Não foi possível mapear colunas do arquivo {filename}")
-                return dados_extraidos
+                # Verificar se é um boletim mensal (PDF)
+                if '.pdf' in href.lower():
+                    ano = None
+
+                    # Primeiro, verificar padrão específico: 23.MM_ indica 2023
+                    match_23 = re.search(r'23\.\d{2}_', href)
+                    if match_23:
+                        ano = 2023
+                    # Caso contrário, tentar extrair ano completo (20YY) do final do filename ou texto
+                    else:
+                        # Tentar no nome do arquivo primeiro (após a última barra)
+                        filename = href.split('/')[-1]
+                        match_ano = re.search(r'20\d{2}', filename)
+                        if match_ano:
+                            ano = int(match_ano.group())
+                        else:
+                            # Tentar no texto do link
+                            match_ano = re.search(r'20\d{2}', texto)
+                            if match_ano:
+                                ano = int(match_ano.group())
+
+                    if ano:
+                        # Verificar se parece ser boletim mensal
+                        if any(term in texto.lower() or term in href.lower()
+                               for term in ['boletim', 'mensal', 'indicador', 'janeiro', 'fevereiro',
+                                           'março', 'abril', 'maio', 'junho', 'julho', 'agosto',
+                                           'setembro', 'outubro', 'novembro', 'dezembro']):
+
+                            # URL completa
+                            if href.startswith('http'):
+                                url_completa = href
+                            else:
+                                url_completa = f"https://ssp.sc.gov.br{href}" if href.startswith('/') else href
+
+                            if ano not in boletins:
+                                boletins[ano] = []
+
+                            if url_completa not in boletins[ano]:
+                                boletins[ano].append(url_completa)
+                                logger.info(f"Boletim encontrado: {ano} - {url_completa}")
+
+            logger.info(f"Total de anos encontrados: {len(boletins)}")
+            for ano, links in boletins.items():
+                logger.info(f"Ano {ano}: {len(links)} boletins")
+
+        except Exception as e:
+            logger.error(f"Erro ao descobrir boletins: {e}")
+
+        # Nota: Os boletins históricos de 2021 e 2022 não estão disponíveis publicamente
+        # Os boletins de 2023 já são detectados pelo scraping da página principal (padrão 23.MM_monthname.pdf)
+        logger.info("Boletins de 2021 e 2022 não disponíveis. Boletins de 2023 detectados pelo scraping da página.")
+
+        return boletins
+
+    def descobrir_links_violencia_domestica(self) -> List[Dict]:
+        """
+        Descobre todos os links de arquivos de violência doméstica (XLS/CSV)
+
+        Returns:
+            Lista de dicionários com informações dos arquivos
+        """
+        arquivos = []
+
+        try:
+            logger.info("Procurando arquivos de violência doméstica")
+            response = self.session.get(self.base_url, timeout=30)
+            response.raise_for_status()
+
+            soup = BeautifulSoup(response.content, 'html.parser')
+            links = soup.find_all('a', href=True)
+
+            for link in links:
+                href = link['href']
+                texto = link.get_text().strip()
+
+                # Verificar se é arquivo XLS/CSV
+                if any(ext in href.lower() for ext in ['.xls', '.xlsx', '.csv']):
+                    # Verificar se é sobre violência doméstica
+                    if any(term in texto.lower() or term in href.lower()
+                           for term in ['violencia', 'domestica', 'doméstica', 'mulher', 'feminicidio']):
+
+                        # URL completa
+                        if href.startswith('http'):
+                            url_completa = href
+                        else:
+                            url_completa = f"https://ssp.sc.gov.br{href}" if href.startswith('/') else href
+
+                        # Tentar extrair ano e semestre
+                        ano_match = re.search(r'20\d{2}', texto) or re.search(r'20\d{2}', href)
+                        semestre_match = re.search(r'[12]º?\s*semestre|semestre\s*[12]', texto.lower())
+
+                        info = {
+                            'url': url_completa,
+                            'texto': texto,
+                            'ano': int(ano_match.group()) if ano_match else None,
+                            'semestre': None
+                        }
+
+                        if semestre_match:
+                            sem_text = semestre_match.group()
+                            info['semestre'] = 1 if '1' in sem_text else 2
+
+                        arquivos.append(info)
+                        logger.info(f"Arquivo violência doméstica encontrado: {url_completa}")
+
+            logger.info(f"Total de arquivos de violência doméstica: {len(arquivos)}")
+
+        except Exception as e:
+            logger.error(f"Erro ao descobrir arquivos de violência doméstica: {e}")
+
+        return arquivos
+
+    def extrair_mes_do_nome_arquivo(self, nome_arquivo: str) -> Optional[int]:
+        """Extrai o número do mês do nome do arquivo"""
+        meses = {
+            'janeiro': 1, 'fevereiro': 2, 'março': 3, 'marco': 3,
+            'abril': 4, 'maio': 5, 'junho': 6,
+            'julho': 7, 'agosto': 8, 'setembro': 9,
+            'outubro': 10, 'novembro': 11, 'dezembro': 12,
+            'jan': 1, 'fev': 2, 'mar': 3, 'abr': 4, 'mai': 5, 'jun': 6,
+            'jul': 7, 'ago': 8, 'set': 9, 'out': 10, 'nov': 11, 'dez': 12
+        }
+
+        nome_lower = nome_arquivo.lower()
+        for mes_nome, mes_num in meses.items():
+            if mes_nome in nome_lower:
+                return mes_num
+
+        # Tentar extrair número do mês (01-12)
+        match = re.search(r'[-_](\d{2})[-_.]', nome_arquivo)
+        if match:
+            mes = int(match.group(1))
+            if 1 <= mes <= 12:
+                return mes
+
+        return None
+
+    def processar_pdf_boletim(self, url: str, ano: int) -> Tuple[bool, str]:
+        """
+        Processa um PDF de boletim mensal
+
+        Args:
+            url: URL do PDF
+            ano: Ano do boletim
+
+        Returns:
+            (sucesso, mensagem)
+        """
+        historico = HistoricoExecucao(
+            data_hora_inicio=datetime.now(),
+            tipo_dados='boletim_mensal',
+            fonte=url,
+            anos_processados=str(ano)
+        )
+
+        try:
+            # Verificar se já existe dados deste arquivo
+            nome_arquivo = url.split('/')[-1]
+            mes = self.extrair_mes_do_nome_arquivo(nome_arquivo)
+
+            if self._dados_ja_existem(ano, mes):
+                msg = f"Dados de {ano}/{mes if mes else 'ano'} já existem. Pulando..."
+                logger.info(msg)
+                historico.status = 'ignorado'
+                historico.mensagem = msg
+                historico.registros_ignorados = 1
+                historico.data_hora_fim = datetime.now()
+                self.db_session.add(historico)
+                self.db_session.commit()
+                return True, msg
+
+            logger.info(f"Baixando PDF: {url}")
+            response = self.session.get(url, timeout=60)
+            response.raise_for_status()
+
+            # Salvar temporariamente
+            temp_path = os.path.join(self.output_dir, f'temp_{nome_arquivo}')
+            with open(temp_path, 'wb') as f:
+                f.write(response.content)
+
+            logger.info(f"Processando PDF: {nome_arquivo}")
+
+            registros_inseridos = 0
+
+            with pdfplumber.open(temp_path) as pdf:
+                logger.info(f"PDF com {len(pdf.pages)} páginas")
+
+                # Página 1: Roubo e Furto
+                if len(pdf.pages) >= 1:
+                    registros_inseridos += self._processar_pagina_roubo_furto(
+                        pdf.pages[0], ano, mes, url
+                    )
+
+                # Página 2: Mortes Violentas
+                if len(pdf.pages) >= 2:
+                    registros_inseridos += self._processar_pagina_mortes_violentas(
+                        pdf.pages[1], ano, mes, url
+                    )
+
+                # Procurar por dados de homicídio em todas as páginas
+                for page_num, page in enumerate(pdf.pages):
+                    registros_inseridos += self._processar_pagina_homicidio(
+                        page, ano, mes, url, page_num
+                    )
+
+            # Remover arquivo temporário
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+            msg = f"PDF processado com sucesso: {registros_inseridos} registros inseridos"
+            logger.info(msg)
+
+            historico.status = 'sucesso'
+            historico.mensagem = msg
+            historico.registros_inseridos = registros_inseridos
+            historico.data_hora_fim = datetime.now()
+            self.db_session.add(historico)
+            self.db_session.commit()
+
+            return True, msg
+
+        except Exception as e:
+            msg = f"Erro ao processar PDF {url}: {e}"
+            logger.error(msg)
+            import traceback
+            logger.debug(traceback.format_exc())
+
+            historico.status = 'erro'
+            historico.mensagem = msg
+            historico.data_hora_fim = datetime.now()
+            self.db_session.add(historico)
+            self.db_session.commit()
+
+            return False, msg
+
+    def _dados_ja_existem(self, ano: int, mes: Optional[int] = None) -> bool:
+        """Verifica se já existem dados para o período especificado"""
+        try:
+            # Verificar em cada tabela
+            for tabela in [Roubo, Furto, MortesViolentas, Homicidio]:
+                query = self.db_session.query(tabela).filter(tabela.ano == ano)
+                if mes:
+                    query = query.filter(tabela.mes == mes)
+
+                if query.count() > 0:
+                    return True
+
+            return False
+        except Exception as e:
+            logger.warning(f"Erro ao verificar dados existentes: {e}")
+            return False
+
+    def _processar_pagina_roubo_furto(self, page, ano: int, mes: Optional[int], fonte: str) -> int:
+        """
+        Processa página 1 com dados ESTADUAIS de roubo e furto
+
+        Estrutura esperada da tabela:
+        Linha com 'ROUBO' seguida de valores numéricos
+        Linha com 'FURTO' seguida de valores numéricos
+        """
+        registros = 0
+
+        try:
+            logger.info(f"Processando página de roubo/furto (ano={ano}, mes={mes})")
+
+            # Extrair tabelas da página
+            tabelas = page.extract_tables()
+            logger.debug(f"  Encontradas {len(tabelas)} tabelas")
+
+            for idx_tabela, tabela in enumerate(tabelas):
+                if not tabela or len(tabela) < 2:
+                    continue
+
+                logger.debug(f"  Analisando tabela {idx_tabela + 1} ({len(tabela)} linhas)")
+
+                # Procurar por linhas com ROUBO ou FURTO
+                for idx_linha, linha in enumerate(tabela):
+                    try:
+                        # Converter linha para string para análise
+                        linha_str = ' '.join([str(cell) if cell else '' for cell in linha]).upper()
+
+                        # Verificar se é linha de ROUBO
+                        if 'ROUBO' in linha_str and 'FURTO' not in linha_str:
+                            logger.debug(f"    Linha {idx_linha} identificada como ROUBO: {linha}")
+
+                            # Extrair o valor mais recente (última coluna não vazia com número)
+                            quantidade = self._extrair_quantidade_da_linha(linha)
+
+                            if quantidade > 0:
+                                registro = Roubo(
+                                    ano=ano,
+                                    mes=mes,
+                                    municipio='Santa Catarina',  # Dado estadual
+                                    regiao='Estado',
+                                    tipo_roubo='Roubo',
+                                    quantidade=quantidade,
+                                    fonte=fonte,
+                                    dados_brutos=json.dumps({'linha': linha}, ensure_ascii=False)
+                                )
+                                self.db_session.add(registro)
+                                registros += 1
+                                logger.info(f"    ✓ ROUBO: {quantidade} ocorrências")
+
+                        # Verificar se é linha de FURTO
+                        elif 'FURTO' in linha_str and 'ROUBO' not in linha_str:
+                            logger.debug(f"    Linha {idx_linha} identificada como FURTO: {linha}")
+
+                            quantidade = self._extrair_quantidade_da_linha(linha)
+
+                            if quantidade > 0:
+                                registro = Furto(
+                                    ano=ano,
+                                    mes=mes,
+                                    municipio='Santa Catarina',  # Dado estadual
+                                    regiao='Estado',
+                                    tipo_furto='Furto',
+                                    quantidade=quantidade,
+                                    fonte=fonte,
+                                    dados_brutos=json.dumps({'linha': linha}, ensure_ascii=False)
+                                )
+                                self.db_session.add(registro)
+                                registros += 1
+                                logger.info(f"    ✓ FURTO: {quantidade} ocorrências")
+
+                    except Exception as e:
+                        logger.debug(f"    Erro ao processar linha {idx_linha}: {e}")
+                        continue
+
+            if registros > 0:
+                self.db_session.commit()
+                logger.info(f"✓ Página roubo/furto: {registros} registros inseridos")
+            else:
+                logger.warning(f"⚠ Nenhum dado de roubo/furto encontrado")
+
+        except Exception as e:
+            logger.error(f"✗ Erro ao processar página de roubo/furto: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
+
+        return registros
+
+    def _extrair_quantidade_da_linha(self, linha: List) -> int:
+        """
+        Extrai a quantidade de ocorrências de uma linha da tabela
+        Procura pelo último valor numérico válido (geralmente o período mais recente)
+        """
+        # Percorrer linha de trás para frente procurando número válido
+        for cell in reversed(linha):
+            if cell is None:
+                continue
+
+            cell_str = str(cell).strip()
+
+            # Remover pontos de milhares e tentar converter
+            cell_clean = cell_str.replace('.', '').replace(',', '')
+
+            if cell_clean.isdigit():
+                return int(cell_clean)
+
+        return 0
+
+    def _limpar_nome_municipio(self, nome: str) -> str:
+        """
+        Limpa nome de município removendo números e caracteres especiais entre parênteses
+
+        Exemplos:
+        'CAMPOS NOVOS (2 — 6)' -> 'CAMPOS NOVOS'
+        'CHAPECÓ (11 — 19)' -> 'CHAPECÓ'
+        """
+        import re
+
+        if not nome:
+            return nome
+
+        # Remover tudo entre parênteses que contenha números
+        nome_limpo = re.sub(r'\s*\([^)]*\d[^)]*\)', '', nome)
+
+        # Remover espaços extras
+        nome_limpo = nome_limpo.strip()
+
+        return nome_limpo
+
+    def _processar_pagina_mortes_violentas(self, page, ano: int, mes: Optional[int], fonte: str) -> int:
+        """Processa página 2 com dados de mortes violentas"""
+        registros = 0
+
+        try:
+            tabelas = page.extract_tables()
+
+            for tabela in tabelas:
+                if not tabela or len(tabela) < 2:
+                    continue
+
+                df = pd.DataFrame(tabela[1:], columns=tabela[0])
+
+                for idx, row in df.iterrows():
+                    try:
+                        municipio = None
+                        regiao = None
+                        quantidade = 0
+                        tipo_morte = None
+
+                        for col_idx, valor in enumerate(row):
+                            if pd.isna(valor) or str(valor).strip() == '':
+                                continue
+
+                            valor_str = str(valor).strip()
+
+                            if any(c.isalpha() for c in valor_str) and len(valor_str) > 3:
+                                if not municipio:
+                                    # Limpar nome do município
+                                    municipio = self._limpar_nome_municipio(valor_str)
+                                elif not tipo_morte and any(term in valor_str.lower()
+                                                           for term in ['homicidio', 'latrocinio', 'morte']):
+                                    tipo_morte = valor_str
+
+                            if valor_str.isdigit():
+                                quantidade = int(valor_str)
+
+                        if quantidade > 0 and municipio:
+                            registro = MortesViolentas(
+                                ano=ano,
+                                mes=mes,
+                                municipio=municipio,
+                                regiao=regiao,
+                                tipo_morte=tipo_morte or 'Morte violenta',
+                                quantidade=quantidade,
+                                fonte=fonte,
+                                dados_brutos=json.dumps(row.to_dict(), ensure_ascii=False)
+                            )
+                            self.db_session.add(registro)
+                            registros += 1
+
+                    except Exception as e:
+                        logger.debug(f"Erro ao processar linha: {e}")
+                        continue
+
+            if registros > 0:
+                self.db_session.commit()
+                logger.info(f"Página mortes violentas: {registros} registros inseridos")
+
+        except Exception as e:
+            logger.error(f"Erro ao processar página de mortes violentas: {e}")
+
+        return registros
+
+    def _processar_pagina_homicidio(self, page, ano: int, mes: Optional[int],
+                                    fonte: str, page_num: int) -> int:
+        """Processa página buscando dados específicos de homicídio"""
+        registros = 0
+
+        try:
+            # Extrair texto da página
+            texto = page.extract_text()
+
+            # Verificar se tem informação de homicídio
+            if not any(term in texto.lower() for term in ['homicidio', 'homicídio', 'feminicidio']):
+                return 0
+
+            tabelas = page.extract_tables()
+
+            for tabela in tabelas:
+                if not tabela or len(tabela) < 2:
+                    continue
+
+                # Verificar se a tabela tem dados de homicídio
+                header_text = ' '.join([str(h).lower() for h in tabela[0]])
+                if 'homicid' not in header_text:
+                    continue
+
+                df = pd.DataFrame(tabela[1:], columns=tabela[0])
+
+                for idx, row in df.iterrows():
+                    try:
+                        municipio = None
+                        regiao = None
+                        quantidade = 0
+                        tipo_homicidio = None
+
+                        for col_idx, valor in enumerate(row):
+                            if pd.isna(valor) or str(valor).strip() == '':
+                                continue
+
+                            valor_str = str(valor).strip()
+
+                            if any(c.isalpha() for c in valor_str) and len(valor_str) > 3:
+                                if not municipio:
+                                    municipio = valor_str
+                                elif any(term in valor_str.lower()
+                                        for term in ['doloso', 'culposo', 'feminicidio']):
+                                    tipo_homicidio = valor_str
+
+                            if valor_str.isdigit():
+                                quantidade = int(valor_str)
+
+                        if quantidade > 0:
+                            registro = Homicidio(
+                                ano=ano,
+                                mes=mes,
+                                municipio=municipio,
+                                regiao=regiao,
+                                tipo_homicidio=tipo_homicidio or 'Homicídio',
+                                quantidade=quantidade,
+                                fonte=fonte,
+                                dados_brutos=json.dumps(row.to_dict(), ensure_ascii=False)
+                            )
+                            self.db_session.add(registro)
+                            registros += 1
+
+                    except Exception as e:
+                        logger.debug(f"Erro ao processar linha: {e}")
+                        continue
+
+            if registros > 0:
+                self.db_session.commit()
+                logger.info(f"Página {page_num} homicídios: {registros} registros inseridos")
+
+        except Exception as e:
+            logger.debug(f"Erro ao processar homicídios na página {page_num}: {e}")
+
+        return registros
+
+    def processar_arquivo_violencia_domestica(self, info: Dict) -> Tuple[bool, str]:
+        """
+        Processa arquivo de violência doméstica (XLS/CSV)
+
+        Estrutura esperada:
+        - Coluna 0: Município
+        - Coluna 1: Fato Comunicado (tipo de violência)
+        - Colunas seguintes: Meses com quantidades
+
+        Args:
+            info: Dicionário com informações do arquivo
+
+        Returns:
+            (sucesso, mensagem)
+        """
+        url = info['url']
+        ano = info.get('ano')
+        semestre = info.get('semestre')
+
+        historico = HistoricoExecucao(
+            data_hora_inicio=datetime.now(),
+            tipo_dados='violencia_domestica',
+            fonte=url,
+            anos_processados=str(ano) if ano else 'desconhecido'
+        )
+
+        try:
+            logger.info(f"Baixando arquivo de violência doméstica: {url}")
+            response = self.session.get(url, timeout=60)
+            response.raise_for_status()
+
+            # Determinar tipo de arquivo e ler
+            if '.csv' in url.lower():
+                df = pd.read_csv(io.BytesIO(response.content), encoding='utf-8', errors='ignore')
+            else:
+                df = pd.read_excel(io.BytesIO(response.content))
+
+            logger.info(f"Arquivo lido: {len(df)} linhas x {len(df.columns)} colunas")
+
+            registros_inseridos = 0
+
+            # Identificar colunas
+            col_municipio = df.columns[0]  # Primeira coluna: município
+            col_tipo = df.columns[1]       # Segunda coluna: tipo de fato
+
+            # Colunas de meses (geralmente da terceira em diante)
+            colunas_meses = df.columns[2:]
+
+            logger.debug(f"  Coluna município: {col_municipio}")
+            logger.debug(f"  Coluna tipo: {col_tipo}")
+            logger.debug(f"  Colunas de dados: {list(colunas_meses)}")
+
+            # Pular primeira linha se for cabeçalho de meses (jan, fev, etc.)
+            df_dados = df[1:] if str(df.iloc[0][col_municipio]).lower() in ['nan', 'none', ''] else df
+
+            # Mapear nome do mês para número
+            meses_map = {
+                'jan': 1, 'fev': 2, 'mar': 3, 'abr': 4, 'mai': 5, 'jun': 6,
+                'jul': 7, 'ago': 8, 'set': 9, 'out': 10, 'nov': 11, 'dez': 12,
+                'janeiro': 1, 'fevereiro': 2, 'março': 3, 'abril': 4, 'maio': 5, 'junho': 6,
+                'julho': 7, 'agosto': 8, 'setembro': 9, 'outubro': 10, 'novembro': 11, 'dezembro': 12
+            }
 
             # Processar cada linha
-            for idx, row in df.iterrows():
+            for idx, row in df_dados.iterrows():
                 try:
-                    dado = {}
+                    municipio = str(row[col_municipio]).strip()
+                    tipo_violencia = str(row[col_tipo]).strip()
 
-                    # Extrair tipo de ocorrência
-                    if 'tipo_ocorrencia' in column_mapping:
-                        dado['tipo_ocorrencia'] = str(row[column_mapping['tipo_ocorrencia']])
+                    # Pular linhas sem município válido
+                    if pd.isna(row[col_municipio]) or municipio.lower() in ['nan', 'none', '']:
+                        continue
 
-                    # Extrair município
-                    if 'municipio' in column_mapping:
-                        dado['municipio'] = str(row[column_mapping['municipio']])
+                    # Processar cada mês
+                    for col_mes in colunas_meses:
+                        try:
+                            valor = row[col_mes]
 
-                    # Extrair região
-                    if 'regiao' in column_mapping:
-                        dado['regiao'] = str(row[column_mapping['regiao']])
+                            # Tentar converter para número
+                            if pd.isna(valor):
+                                continue
 
-                    # Extrair quantidade/total
-                    if 'quantidade' in column_mapping:
-                        val = row[column_mapping['quantidade']]
-                        dado['quantidade'] = int(val) if pd.notna(val) else 0
+                            valor_str = str(valor).strip()
+                            if not valor_str or valor_str.lower() in ['nan', 'none', '']:
+                                continue
 
-                    # Extrair período/ano/mês
-                    if 'ano' in column_mapping:
-                        dado['ano'] = int(row[column_mapping['ano']]) if pd.notna(row[column_mapping['ano']]) else datetime.now().year
+                            # Tentar extrair quantidade
+                            quantidade = 0
+                            try:
+                                quantidade = int(float(valor_str))
+                            except:
+                                continue
 
-                    if 'mes' in column_mapping:
-                        dado['mes'] = int(row[column_mapping['mes']]) if pd.notna(row[column_mapping['mes']]) else None
+                            if quantidade <= 0:
+                                continue
 
-                    if 'periodo' in column_mapping:
-                        dado['periodo'] = str(row[column_mapping['periodo']])
-                    elif 'ano' in dado:
-                        periodo = str(dado['ano'])
-                        if 'mes' in dado and dado['mes']:
-                            periodo += f"-{dado['mes']:02d}"
-                        dado['periodo'] = periodo
+                            # Tentar identificar o mês
+                            mes = None
 
-                    # Apenas adicionar se tiver dados mínimos
-                    if dado.get('tipo_ocorrencia') or dado.get('municipio') or dado.get('quantidade', 0) > 0:
-                        dados_extraidos.append(dado)
+                            # Primeira linha pode ter nome do mês
+                            if idx > 0:
+                                nome_mes = str(df.iloc[0][col_mes]).lower().strip()
+                                mes = meses_map.get(nome_mes)
+
+                            # Se não conseguiu, tentar extrair do nome da coluna
+                            if not mes:
+                                col_mes_str = str(col_mes).lower()
+                                for nome, num in meses_map.items():
+                                    if nome in col_mes_str:
+                                        mes = num
+                                        break
+
+                            # Criar registro
+                            registro = ViolenciaDomestica(
+                                ano=ano or 2025,  # Ano padrão se não especificado
+                                mes=mes,
+                                semestre=semestre,
+                                municipio=municipio,
+                                tipo_violencia=tipo_violencia,
+                                quantidade=quantidade,
+                                fonte=url,
+                                dados_brutos=json.dumps({
+                                    'municipio': municipio,
+                                    'tipo': tipo_violencia,
+                                    'mes_col': str(col_mes),
+                                    'quantidade': quantidade
+                                }, ensure_ascii=False)
+                            )
+                            self.db_session.add(registro)
+                            registros_inseridos += 1
+
+                        except Exception as e:
+                            logger.debug(f"Erro ao processar coluna {col_mes} da linha {idx}: {e}")
+                            continue
 
                 except Exception as e:
                     logger.debug(f"Erro ao processar linha {idx}: {e}")
                     continue
 
-            logger.info(f"Extraídos {len(dados_extraidos)} registros válidos do Excel")
+            self.db_session.commit()
+
+            msg = f"Arquivo processado: {registros_inseridos} registros inseridos"
+            logger.info(msg)
+
+            historico.status = 'sucesso'
+            historico.mensagem = msg
+            historico.registros_inseridos = registros_inseridos
+            historico.data_hora_fim = datetime.now()
+            self.db_session.add(historico)
+            self.db_session.commit()
+
+            return True, msg
 
         except Exception as e:
-            logger.error(f"Erro ao processar arquivo Excel: {e}")
-            import traceback
-            logger.debug(traceback.format_exc())
-
-        return dados_extraidos
-
-    def _process_pdf_file(self, content: bytes, filename: str) -> List[Dict]:
-        """
-        Processa arquivo PDF e extrai dados estruturados de tabelas
-
-        Args:
-            content: Conteúdo binário do arquivo PDF
-            filename: Nome do arquivo para identificação
-
-        Returns:
-            Lista de dicionários com dados extraídos
-        """
-        dados_extraidos = []
-
-        try:
-            # Salvar temporariamente o PDF
-            temp_pdf_path = os.path.join(self.output_dir, f'temp_{filename}')
-            with open(temp_pdf_path, 'wb') as f:
-                f.write(content)
-
-            logger.info(f"Processando PDF: {filename}")
-
-            # Método 1: Usar pdfplumber para extrair tabelas
-            try:
-                with pdfplumber.open(temp_pdf_path) as pdf:
-                    logger.info(f"PDF tem {len(pdf.pages)} páginas")
-
-                    for page_num, page in enumerate(pdf.pages, 1):
-                        # Extrair tabelas da página
-                        tables = page.extract_tables()
-
-                        if tables:
-                            logger.info(f"Página {page_num}: {len(tables)} tabela(s) encontrada(s)")
-
-                            for table_idx, table in enumerate(tables):
-                                # Converter tabela para DataFrame
-                                if not table or len(table) < 2:
-                                    continue
-
-                                # Primeira linha como cabeçalho
-                                headers = [str(h).strip().lower() if h else f'col_{i}'
-                                          for i, h in enumerate(table[0])]
-                                rows = table[1:]
-
-                                # Criar DataFrame
-                                df = pd.DataFrame(rows, columns=headers)
-
-                                # Mapear colunas
-                                column_mapping = self._identify_columns(df.columns.tolist())
-
-                                if column_mapping:
-                                    # Processar cada linha
-                                    for idx, row in df.iterrows():
-                                        try:
-                                            dado = {}
-
-                                            if 'tipo_ocorrencia' in column_mapping:
-                                                val = row[column_mapping['tipo_ocorrencia']]
-                                                if pd.notna(val) and str(val).strip():
-                                                    dado['tipo_ocorrencia'] = str(val).strip()
-
-                                            if 'municipio' in column_mapping:
-                                                val = row[column_mapping['municipio']]
-                                                if pd.notna(val) and str(val).strip():
-                                                    dado['municipio'] = str(val).strip()
-
-                                            if 'regiao' in column_mapping:
-                                                val = row[column_mapping['regiao']]
-                                                if pd.notna(val) and str(val).strip():
-                                                    dado['regiao'] = str(val).strip()
-
-                                            if 'quantidade' in column_mapping:
-                                                val = row[column_mapping['quantidade']]
-                                                if pd.notna(val):
-                                                    try:
-                                                        # Limpar formatação de número
-                                                        val_str = str(val).replace('.', '').replace(',', '.')
-                                                        dado['quantidade'] = int(float(val_str))
-                                                    except:
-                                                        dado['quantidade'] = 0
-
-                                            if 'ano' in column_mapping:
-                                                val = row[column_mapping['ano']]
-                                                if pd.notna(val):
-                                                    try:
-                                                        dado['ano'] = int(float(str(val)))
-                                                    except:
-                                                        dado['ano'] = datetime.now().year
-
-                                            if 'mes' in column_mapping:
-                                                val = row[column_mapping['mes']]
-                                                if pd.notna(val):
-                                                    try:
-                                                        dado['mes'] = int(float(str(val)))
-                                                    except:
-                                                        dado['mes'] = None
-
-                                            # Extrair período do filename se não tiver
-                                            if 'periodo' not in dado or not dado.get('periodo'):
-                                                # Tentar extrair do filename
-                                                match = re.search(r'(\d{4})', filename)
-                                                if match:
-                                                    dado['ano'] = int(match.group(1))
-                                                    dado['periodo'] = match.group(1)
-
-                                                    # Tentar extrair mês
-                                                    meses = {
-                                                        'janeiro': 1, 'fevereiro': 2, 'março': 3, 'marco': 3,
-                                                        'abril': 4, 'maio': 5, 'junho': 6,
-                                                        'julho': 7, 'agosto': 8, 'setembro': 9,
-                                                        'outubro': 10, 'novembro': 11, 'dezembro': 12
-                                                    }
-                                                    for mes_nome, mes_num in meses.items():
-                                                        if mes_nome in filename.lower():
-                                                            dado['mes'] = mes_num
-                                                            dado['periodo'] = f"{dado['ano']}-{mes_num:02d}"
-                                                            break
-
-                                            # Adicionar se tiver dados mínimos
-                                            if (dado.get('tipo_ocorrencia') or dado.get('municipio') or
-                                                dado.get('quantidade', 0) > 0):
-                                                dados_extraidos.append(dado)
-
-                                        except Exception as e:
-                                            logger.debug(f"Erro ao processar linha do PDF: {e}")
-                                            continue
-
-                                    logger.info(f"Tabela {table_idx + 1}: {len(dados_extraidos)} registros extraídos")
-
-            except Exception as e:
-                logger.warning(f"pdfplumber falhou: {e}, tentando tabula...")
-
-                # Método 2: Usar tabula como fallback
-                try:
-                    # Extrair todas as tabelas do PDF
-                    dfs = tabula.read_pdf(temp_pdf_path, pages='all', multiple_tables=True)
-
-                    logger.info(f"Tabula encontrou {len(dfs)} tabela(s)")
-
-                    for df in dfs:
-                        if df.empty:
-                            continue
-
-                        # Normalizar colunas
-                        df.columns = [str(col).strip().lower() for col in df.columns]
-
-                        # Mapear colunas
-                        column_mapping = self._identify_columns(df.columns.tolist())
-
-                        if column_mapping:
-                            for idx, row in df.iterrows():
-                                try:
-                                    dado = {}
-
-                                    if 'tipo_ocorrencia' in column_mapping:
-                                        val = row[column_mapping['tipo_ocorrencia']]
-                                        if pd.notna(val):
-                                            dado['tipo_ocorrencia'] = str(val).strip()
-
-                                    if 'municipio' in column_mapping:
-                                        val = row[column_mapping['municipio']]
-                                        if pd.notna(val):
-                                            dado['municipio'] = str(val).strip()
-
-                                    if 'quantidade' in column_mapping:
-                                        val = row[column_mapping['quantidade']]
-                                        if pd.notna(val):
-                                            try:
-                                                val_str = str(val).replace('.', '').replace(',', '.')
-                                                dado['quantidade'] = int(float(val_str))
-                                            except:
-                                                dado['quantidade'] = 0
-
-                                    # Extrair ano do filename
-                                    match = re.search(r'(\d{4})', filename)
-                                    if match:
-                                        dado['ano'] = int(match.group(1))
-                                        dado['periodo'] = match.group(1)
-
-                                    if (dado.get('tipo_ocorrencia') or dado.get('municipio') or
-                                        dado.get('quantidade', 0) > 0):
-                                        dados_extraidos.append(dado)
-
-                                except Exception as e:
-                                    logger.debug(f"Erro ao processar linha do tabula: {e}")
-                                    continue
-
-                except Exception as e:
-                    logger.error(f"Tabula também falhou: {e}")
-
-            # Remover arquivo temporário
-            if os.path.exists(temp_pdf_path):
-                os.remove(temp_pdf_path)
-
-            logger.info(f"Extraídos {len(dados_extraidos)} registros válidos do PDF")
-
-        except Exception as e:
-            logger.error(f"Erro ao processar arquivo PDF: {e}")
-            import traceback
-            logger.debug(traceback.format_exc())
-
-        return dados_extraidos
-
-    def _identify_columns(self, columns: List[str]) -> Dict[str, str]:
-        """
-        Identifica e mapeia colunas do Excel para campos do banco de dados
-
-        Args:
-            columns: Lista de nomes de colunas
-
-        Returns:
-            Dicionário mapeando campo -> nome da coluna
-        """
-        mapping = {}
-
-        # Possíveis nomes para cada campo
-        patterns = {
-            'tipo_ocorrencia': ['tipo', 'ocorrencia', 'crime', 'natureza', 'infração'],
-            'municipio': ['municipio', 'município', 'cidade', 'local'],
-            'regiao': ['regiao', 'região', 'regional', 'area', 'área'],
-            'quantidade': ['quantidade', 'total', 'qtd', 'numero', 'número', 'ocorrencias', 'ocorrências'],
-            'ano': ['ano'],
-            'mes': ['mes', 'mês', 'month'],
-            'periodo': ['periodo', 'período', 'data', 'referencia', 'referência']
-        }
-
-        for field, possible_names in patterns.items():
-            for col in columns:
-                col_lower = col.lower().strip()
-                if any(name in col_lower for name in possible_names):
-                    mapping[field] = col
-                    break
-
-        logger.info(f"Mapeamento de colunas identificado: {mapping}")
-        return mapping
-
-    def extract_json_from_scripts(self, soup: BeautifulSoup) -> List[Dict]:
-        """
-        Extrai dados JSON embutidos em scripts da página
-
-        Args:
-            soup: Objeto BeautifulSoup da página
-
-        Returns:
-            Lista de dicionários com dados extraídos
-        """
-        dados_extraidos = []
-
-        scripts = soup.find_all('script')
-        logger.info(f"Analisando {len(scripts)} scripts na página")
-
-        for idx, script in enumerate(scripts):
-            if not script.string:
-                continue
-
-            script_content = script.string
-
-            # Procurar por diferentes padrões de dados JSON
-            patterns = [
-                # Padrão 1: var dados = {...}
-                r'var\s+\w*[Dd]ados?\w*\s*=\s*(\{[^;]+\}|\[[^\]]+\])',
-                # Padrão 2: const dados = {...}
-                r'const\s+\w*[Dd]ados?\w*\s*=\s*(\{[^;]+\}|\[[^\]]+\])',
-                # Padrão 3: let dados = {...}
-                r'let\s+\w*[Dd]ados?\w*\s*=\s*(\{[^;]+\}|\[[^\]]+\])',
-                # Padrão 4: JSON puro
-                r'(\{["\w]+:[^}]+\})',
-                # Padrão 5: Arrays JSON
-                r'(\[[{\[].+?[}\]]\])',
-            ]
-
-            for pattern in patterns:
-                matches = re.finditer(pattern, script_content, re.DOTALL)
-                for match in matches:
-                    try:
-                        json_str = match.group(1)
-                        # Tentar parsear o JSON
-                        data = json.loads(json_str)
-                        if isinstance(data, (dict, list)) and data:
-                            if isinstance(data, list):
-                                dados_extraidos.extend(data)
-                            else:
-                                dados_extraidos.append(data)
-                            logger.info(f"JSON extraído do script {idx}")
-                    except json.JSONDecodeError:
-                        continue
-                    except Exception as e:
-                        logger.debug(f"Erro ao processar match: {e}")
-
-        return dados_extraidos
-
-    def extract_with_requests(self) -> List[Dict]:
-        """
-        Extrai dados usando requests - método principal
-
-        Returns:
-            Lista de dicionários com os dados extraídos
-        """
-        dados_extraidos = []
-
-        try:
-            logger.info(f"Acessando {self.base_url}")
-            response = self.http_session.get(self.base_url, timeout=30)
-            response.raise_for_status()
-
-            # Salvar HTML para debug
-            html_path = os.path.join(self.output_dir, 'page_source.html')
-            with open(html_path, 'w', encoding='utf-8') as f:
-                f.write(response.text)
-            logger.info(f"HTML salvo em {html_path}")
-
-            soup = BeautifulSoup(response.content, 'lxml')
-
-            # Método 1: Procurar por tabelas HTML
-            tabelas = soup.find_all('table')
-            logger.info(f"Encontradas {len(tabelas)} tabelas")
-
-            for idx, tabela in enumerate(tabelas):
-                try:
-                    df = pd.read_html(str(tabela))[0]
-                    if not df.empty:
-                        csv_path = os.path.join(self.output_dir, f'tabela_{idx}.csv')
-                        df.to_csv(csv_path, index=False, encoding='utf-8')
-                        logger.info(f"Tabela {idx} salva: {len(df)} registros")
-
-                        # Converter para lista de dicionários
-                        dados = df.to_dict('records')
-                        dados_extraidos.extend(dados)
-                except Exception as e:
-                    logger.debug(f"Erro ao processar tabela {idx}: {e}")
-
-            # Método 2: Extrair dados de scripts JSON
-            dados_json = self.extract_json_from_scripts(soup)
-            if dados_json:
-                logger.info(f"Extraídos {len(dados_json)} objetos JSON dos scripts")
-                dados_extraidos.extend(dados_json)
-
-            # Método 3: Procurar por elementos específicos com dados
-            # Exemplos: divs, sections, articles com classes/ids relevantes
-            elementos_dados = soup.find_all(['div', 'section', 'article'],
-                                          class_=lambda x: x and any(term in str(x).lower()
-                                          for term in ['dado', 'data', 'estatistica', 'numero']))
-            logger.info(f"Encontrados {len(elementos_dados)} elementos com possíveis dados")
-
-            # Método 4: Procurar por links de API ou arquivos de dados
-            links = soup.find_all('a', href=True)
-            data_links = [link['href'] for link in links
-                         if any(ext in link['href'].lower()
-                         for ext in ['.json', '.csv', '.xlsx', '.xls', '.pdf', '/api/', '/dados/'])]
-
-            if data_links:
-                logger.info(f"Encontrados {len(data_links)} links para dados")
-                for link in data_links[:10]:  # Processar até 10 arquivos
-                    try:
-                        full_url = link if link.startswith('http') else f"{self.api_url}{link}"
-                        logger.info(f"Tentando acessar: {full_url}")
-                        data_response = self.http_session.get(full_url, timeout=30)
-                        data_response.raise_for_status()
-
-                        if '.json' in link.lower():
-                            dados_api = data_response.json()
-                            if isinstance(dados_api, list):
-                                dados_extraidos.extend(dados_api)
-                            elif isinstance(dados_api, dict):
-                                dados_extraidos.append(dados_api)
-                            logger.info(f"JSON processado: {len(dados_api) if isinstance(dados_api, list) else 1} registros")
-
-                        elif '.csv' in link.lower():
-                            df = pd.read_csv(io.StringIO(data_response.text))
-                            dados_extraidos.extend(df.to_dict('records'))
-                            logger.info(f"CSV processado: {len(df)} registros")
-
-                        elif '.xlsx' in link.lower() or '.xls' in link.lower():
-                            # Processar arquivos Excel
-                            dados_excel = self._process_excel_file(data_response.content, link)
-                            if dados_excel:
-                                dados_extraidos.extend(dados_excel)
-                                logger.info(f"Excel processado: {len(dados_excel)} registros de {link.split('/')[-1]}")
-
-                        elif '.pdf' in link.lower():
-                            # Processar arquivos PDF
-                            dados_pdf = self._process_pdf_file(data_response.content, link.split('/')[-1])
-                            if dados_pdf:
-                                dados_extraidos.extend(dados_pdf)
-                                logger.info(f"PDF processado: {len(dados_pdf)} registros de {link.split('/')[-1]}")
-
-                    except Exception as e:
-                        logger.warning(f"Erro ao acessar {link}: {e}")
-
-            logger.info(f"Extração com requests concluída: {len(dados_extraidos)} registros")
-
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Erro de requisição: {e}")
-        except Exception as e:
-            logger.error(f"Erro durante extração: {e}")
+            msg = f"Erro ao processar arquivo {url}: {e}"
+            logger.error(msg)
             import traceback
             logger.error(traceback.format_exc())
 
-        return dados_extraidos
-
-    def _is_relevant_data(self, dado: Dict) -> bool:
-        """
-        Verifica se o dado extraído é relevante para dados de segurança
-
-        Args:
-            dado: Dicionário com dados
-
-        Returns:
-            True se o dado parece ser relevante, False caso contrário
-        """
-        # Se tem campos estruturados de dados de segurança, é relevante
-        if dado.get('tipo_ocorrencia') or dado.get('municipio') or dado.get('regiao'):
-            return True
-
-        if dado.get('quantidade', 0) > 0 and (dado.get('ano') or dado.get('periodo')):
-            return True
-
-        # Lista de palavras-chave que indicam dados não relevantes
-        irrelevant_keywords = [
-            'emoji', 'elementor', 'wordpress', 'css', 'javascript', 'jquery',
-            'ajax', 'widget', 'plugin', 'theme', 'menu', 'admin', 'url', 'svg',
-            'breakpoint', 'viewport', 'lightbox', 'carousel', 'slider', 'nonce',
-            'baseurl', 'assets', 'upload', 'script', 'style', 'font', 'icon'
-        ]
-
-        # Converter dado para string e verificar se contém palavras irrelevantes
-        dado_str = json.dumps(dado, ensure_ascii=False).lower()
-
-        # Se contiver muitas palavras irrelevantes, provavelmente é configuração do site
-        if any(keyword in dado_str for keyword in irrelevant_keywords):
-            return False
-
-        # Verificar se tem estrutura de dados de segurança
-        relevant_fields = ['ocorrencia', 'crime', 'violencia', 'roubo', 'furto',
-                          'homicidio', 'municipio', 'regiao', 'quantidade', 'total']
-
-        has_relevant_field = any(field in dado_str for field in relevant_fields)
-
-        return has_relevant_field
-
-    def save_to_database(self, dados: List[Dict]):
-        """
-        Salva dados no banco de dados
-
-        Args:
-            dados: Lista de dicionários com os dados
-        """
-        if not self.db_session:
-            logger.warning("Sessão de banco de dados não disponível")
-            return
-
-        # Filtrar apenas dados relevantes
-        dados_relevantes = [d for d in dados if self._is_relevant_data(d)]
-
-        if not dados_relevantes:
-            logger.warning("Nenhum dado relevante encontrado para salvar no banco")
-            # Se não houver dados relevantes, criar dados de exemplo
-            logger.info("Gerando dados de exemplo...")
-            dados_relevantes = self._generate_sample_data()
-
-        try:
-            for dado in dados_relevantes:
-                registro = DadosSeguranca(
-                    tipo_ocorrencia=str(dado.get('tipo_ocorrencia', 'Não identificado'))[:200],
-                    municipio=str(dado.get('municipio', 'Não identificado'))[:200],
-                    regiao=str(dado.get('regiao', 'Não identificado'))[:100],
-                    periodo=str(dado.get('periodo', 'Não identificado'))[:100],
-                    quantidade=int(dado.get('quantidade', 0)) if str(dado.get('quantidade', 0)).isdigit() else 0,
-                    ano=int(dado.get('ano', datetime.now().year)) if str(dado.get('ano', datetime.now().year)).isdigit() else datetime.now().year,
-                    mes=int(dado.get('mes')) if dado.get('mes') and str(dado.get('mes')).isdigit() else None,
-                    dados_brutos=json.dumps(dado, ensure_ascii=False)
-                )
-                self.db_session.add(registro)
-
+            historico.status = 'erro'
+            historico.mensagem = msg
+            historico.data_hora_fim = datetime.now()
+            self.db_session.add(historico)
             self.db_session.commit()
-            logger.info(f"{len(dados_relevantes)} registros salvos no banco de dados")
-        except Exception as e:
-            logger.error(f"Erro ao salvar no banco de dados: {e}")
-            self.db_session.rollback()
 
-    def _generate_sample_data(self) -> List[Dict]:
-        """
-        Gera dados de exemplo quando não consegue extrair dados reais
+            return False, msg
 
-        Returns:
-            Lista de dicionários com dados de exemplo
-        """
-        import random
-
-        municipios = [
-            'Florianópolis', 'Joinville', 'Blumenau', 'São José',
-            'Criciúma', 'Chapecó', 'Itajaí', 'Jaraguá do Sul',
-            'Lages', 'Palhoça', 'Balneário Camboriú', 'Brusque'
-        ]
-
-        tipos_ocorrencia = [
-            'Furto', 'Roubo', 'Homicídio', 'Lesão Corporal',
-            'Tráfico de Drogas', 'Porte Ilegal de Arma',
-            'Violência Doméstica', 'Estelionato'
-        ]
-
-        regioes = ['Grande Florianópolis', 'Norte', 'Vale do Itajaí', 'Sul', 'Oeste', 'Serra']
-
-        dados = []
-        ano_atual = datetime.now().year
-
-        for _ in range(50):  # Gerar 50 registros de exemplo
-            ano = random.randint(ano_atual - 2, ano_atual)
-            mes = random.randint(1, 12)
-
-            dados.append({
-                'tipo_ocorrencia': random.choice(tipos_ocorrencia),
-                'municipio': random.choice(municipios),
-                'regiao': random.choice(regioes),
-                'periodo': f"{ano}-{mes:02d}",
-                'quantidade': random.randint(5, 150),
-                'ano': ano,
-                'mes': mes
-            })
-
-        logger.info(f"Gerados {len(dados)} registros de exemplo")
-        return dados
-
-    def save_to_csv(self, dados: List[Dict], filename: str = None):
-        """
-        Salva dados em arquivo CSV
-
-        Args:
-            dados: Lista de dicionários com os dados
-            filename: Nome do arquivo (opcional)
-        """
-        if not dados:
-            logger.warning("Nenhum dado para salvar")
-            return
-
+    def limpar_tabelas_antigas(self):
+        """Remove tabelas antigas e seus dados"""
         try:
-            df = pd.DataFrame(dados)
+            logger.info("Removendo tabela antiga 'dados_seguranca'...")
 
-            if filename is None:
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                filename = f'dados_ssp_sc_{timestamp}.csv'
+            with self.engine.connect() as conn:
+                conn.execute(text("DROP TABLE IF EXISTS dados_seguranca CASCADE"))
+                conn.commit()
 
-            filepath = os.path.join(self.output_dir, filename)
-            df.to_csv(filepath, index=False, encoding='utf-8')
-            logger.info(f"Dados salvos em {filepath}")
+            logger.info("Tabela antiga removida com sucesso")
+
         except Exception as e:
-            logger.error(f"Erro ao salvar CSV: {e}")
-
-    def save_to_json(self, dados: List[Dict], filename: str = None):
-        """
-        Salva dados em arquivo JSON
-
-        Args:
-            dados: Lista de dicionários com os dados
-            filename: Nome do arquivo (opcional)
-        """
-        if not dados:
-            logger.warning("Nenhum dado para salvar")
-            return
-
-        try:
-            if filename is None:
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                filename = f'dados_ssp_sc_{timestamp}.json'
-
-            filepath = os.path.join(self.output_dir, filename)
-            with open(filepath, 'w', encoding='utf-8') as f:
-                json.dump(dados, f, ensure_ascii=False, indent=2)
-            logger.info(f"Dados salvos em {filepath}")
-        except Exception as e:
-            logger.error(f"Erro ao salvar JSON: {e}")
+            logger.error(f"Erro ao remover tabelas antigas: {e}")
 
     def run(self):
-        """Executa o processo completo de extração - versão Python puro"""
-        logger.info("Iniciando extração de dados da SSP-SC (Python puro)")
+        """Executa o processo completo de extração"""
+        logger.info("=" * 80)
+        logger.info("Iniciando novo extrator SSP-SC")
+        logger.info("=" * 80)
 
-        # Extrair dados usando apenas requests
-        dados = self.extract_with_requests()
+        # 1. Descobrir todos os boletins disponíveis
+        logger.info("\n1. Descobrindo boletins mensais...")
+        boletins = self.descobrir_links_boletins()
 
-        if dados:
-            logger.info(f"Total de {len(dados)} registros extraídos")
+        # 2. Processar cada boletim
+        logger.info("\n2. Processando boletins mensais...")
+        total_sucesso = 0
+        total_erro = 0
 
-            # Salvar em múltiplos formatos
-            self.save_to_csv(dados)
-            self.save_to_json(dados)
-            self.save_to_database(dados)
-        else:
-            logger.warning("Nenhum dado foi extraído. Verifique a estrutura do site.")
+        for ano in sorted(boletins.keys(), reverse=True):
+            logger.info(f"\nProcessando ano {ano}...")
+            for url in boletins[ano]:
+                sucesso, msg = self.processar_pdf_boletim(url, ano)
+                if sucesso:
+                    total_sucesso += 1
+                else:
+                    total_erro += 1
 
-        logger.info("Extração concluída")
+        logger.info(f"\nBoletins processados: {total_sucesso} sucesso, {total_erro} erros")
+
+        # 3. Descobrir e processar arquivos de violência doméstica
+        logger.info("\n3. Processando arquivos de violência doméstica...")
+        arquivos_vd = self.descobrir_links_violencia_domestica()
+
+        total_vd_sucesso = 0
+        total_vd_erro = 0
+
+        for info in arquivos_vd:
+            sucesso, msg = self.processar_arquivo_violencia_domestica(info)
+            if sucesso:
+                total_vd_sucesso += 1
+            else:
+                total_vd_erro += 1
+
+        logger.info(f"\nArquivos de violência doméstica: {total_vd_sucesso} sucesso, {total_vd_erro} erros")
+
+        # 4. Resumo final
+        logger.info("\n" + "=" * 80)
+        logger.info("RESUMO DA EXECUÇÃO")
+        logger.info("=" * 80)
+        logger.info(f"Boletins mensais: {total_sucesso} sucesso, {total_erro} erros")
+        logger.info(f"Violência doméstica: {total_vd_sucesso} sucesso, {total_vd_erro} erros")
+        logger.info("=" * 80)
+
+        logger.info("\nExtração concluída!")
 
 
 def main():
     """Função principal"""
-    extractor = SSPSCExtractor()
+    extractor = SSPSCExtractorNew()
+
+    # Opção para limpar tabelas antigas
+    import sys
+    if '--limpar-antigas' in sys.argv:
+        extractor.limpar_tabelas_antigas()
+
     extractor.run()
 
 

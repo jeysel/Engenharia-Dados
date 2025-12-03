@@ -1,6 +1,6 @@
 """
-Sistema de Visualização de Dados da SSP-SC
-Dashboard interativo com filtros e gráficos
+Sistema de Visualização de Dados da SSP-SC - Nova Versão
+Dashboard interativo com a nova estrutura de dados
 """
 
 import os
@@ -41,78 +41,78 @@ except Exception as e:
     engine = None
 
 
-def get_data_from_db() -> pd.DataFrame:
+def get_data_from_table(table_name: str, filtros: dict = None) -> pd.DataFrame:
     """
-    Busca dados do banco de dados
+    Busca dados de uma tabela específica
+
+    Args:
+        table_name: Nome da tabela (roubo, furto, mortes_violentas, homicidio, violencia_domestica)
+        filtros: Dicionário com filtros (ano, mes, municipio, regiao, etc)
 
     Returns:
         DataFrame com os dados
     """
     if not engine:
-        logger.warning("Engine não disponível, retornando dados de exemplo")
-        return get_sample_data()
+        logger.warning("Engine não disponível")
+        return pd.DataFrame()
 
     try:
-        query = """
-        SELECT
-            id,
-            data_coleta,
-            tipo_ocorrencia,
-            municipio,
-            regiao,
-            periodo,
-            quantidade,
-            ano,
-            mes
-        FROM dados_seguranca
-        ORDER BY data_coleta DESC
-        """
+        query = f"SELECT * FROM {table_name}"
+        conditions = []
+
+        if filtros:
+            if 'ano' in filtros and filtros['ano']:
+                conditions.append(f"ano = {filtros['ano']}")
+            if 'mes' in filtros and filtros['mes']:
+                conditions.append(f"mes = {filtros['mes']}")
+            if 'municipio' in filtros and filtros['municipio']:
+                conditions.append(f"municipio = '{filtros['municipio']}'")
+            if 'regiao' in filtros and filtros['regiao']:
+                conditions.append(f"regiao = '{filtros['regiao']}'")
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        query += " ORDER BY ano DESC, mes DESC"
+
         df = pd.read_sql(query, engine)
-        logger.info(f"{len(df)} registros carregados do banco de dados")
+        logger.info(f"{len(df)} registros carregados da tabela {table_name}")
         return df
+
     except Exception as e:
-        logger.error(f"Erro ao buscar dados: {e}")
-        return get_sample_data()
+        logger.error(f"Erro ao buscar dados de {table_name}: {e}")
+        return pd.DataFrame()
 
 
-def get_sample_data() -> pd.DataFrame:
+def get_all_data(filtros: dict = None) -> pd.DataFrame:
     """
-    Retorna dados de exemplo para demonstração
+    Busca dados de todas as tabelas e combina
+
+    Args:
+        filtros: Filtros a aplicar
 
     Returns:
-        DataFrame com dados de exemplo
+        DataFrame combinado
     """
-    import random
+    dfs = []
 
-    municipios = [
-        'Florianópolis', 'Joinville', 'Blumenau', 'São José',
-        'Criciúma', 'Chapecó', 'Itajaí', 'Jaraguá do Sul',
-        'Lages', 'Palhoça', 'Balneário Camboriú', 'Brusque'
-    ]
+    # Buscar de cada tabela
+    for tabela, categoria in [
+        ('roubo', 'Roubo'),
+        ('furto', 'Furto'),
+        ('mortes_violentas', 'Mortes Violentas'),
+        ('homicidio', 'Homicídio'),
+        ('violencia_domestica', 'Violência Doméstica')
+    ]:
+        df = get_data_from_table(tabela, filtros)
+        if not df.empty:
+            df['categoria'] = categoria
+            dfs.append(df)
 
-    tipos_ocorrencia = [
-        'Furto', 'Roubo', 'Homicídio', 'Lesão Corporal',
-        'Tráfico de Drogas', 'Porte Ilegal de Arma',
-        'Violência Doméstica', 'Estelionato'
-    ]
-
-    regioes = ['Grande Florianópolis', 'Norte', 'Vale do Itajaí', 'Sul', 'Oeste', 'Serra']
-
-    dados = []
-    for i in range(1000):
-        dados.append({
-            'id': i + 1,
-            'data_coleta': datetime.now(),
-            'tipo_ocorrencia': random.choice(tipos_ocorrencia),
-            'municipio': random.choice(municipios),
-            'regiao': random.choice(regioes),
-            'periodo': f"{random.randint(2020, 2024)}",
-            'quantidade': random.randint(1, 100),
-            'ano': random.randint(2020, 2024),
-            'mes': random.randint(1, 12)
-        })
-
-    return pd.DataFrame(dados)
+    if dfs:
+        return pd.concat(dfs, ignore_index=True)
+    else:
+        return pd.DataFrame()
 
 
 @app.route('/')
@@ -127,45 +127,43 @@ def get_dados():
     Endpoint para obter dados com filtros
 
     Query Parameters:
-        - tipo_ocorrencia: Filtrar por tipo de ocorrência
+        - categoria: roubo, furto, mortes_violentas, homicidio, violencia_domestica
         - municipio: Filtrar por município
         - regiao: Filtrar por região
         - ano: Filtrar por ano
         - mes: Filtrar por mês
     """
     try:
-        df = get_data_from_db()
+        categoria = request.args.get('categoria', 'todas')
+        filtros = {
+            'ano': request.args.get('ano', type=int),
+            'mes': request.args.get('mes', type=int),
+            'municipio': request.args.get('municipio'),
+            'regiao': request.args.get('regiao')
+        }
 
-        # Aplicar filtros
-        tipo_ocorrencia = request.args.get('tipo_ocorrencia')
-        if tipo_ocorrencia:
-            df = df[df['tipo_ocorrencia'] == tipo_ocorrencia]
+        # Remover filtros None
+        filtros = {k: v for k, v in filtros.items() if v is not None}
 
-        municipio = request.args.get('municipio')
-        if municipio:
-            df = df[df['municipio'] == municipio]
+        if categoria == 'todas':
+            df = get_all_data(filtros)
+        else:
+            df = get_data_from_table(categoria, filtros)
 
-        regiao = request.args.get('regiao')
-        if regiao:
-            df = df[df['regiao'] == regiao]
-
-        ano = request.args.get('ano')
-        if ano:
-            df = df[df['ano'] == int(ano)]
-
-        mes = request.args.get('mes')
-        if mes:
-            df = df[df['mes'] == int(mes)]
-
-        # Converter para formato JSON
-        # Substituir NaN por None antes de converter
+        # Converter para JSON
+        df = df.replace({pd.NA: None, pd.NaT: None})
         df = df.where(pd.notna(df), None)
         dados = df.to_dict('records')
 
-        # Converter datetime para string
+        # Converter datetime para string e limpar NaN/None
         for dado in dados:
             if 'data_coleta' in dado and isinstance(dado['data_coleta'], datetime):
                 dado['data_coleta'] = dado['data_coleta'].isoformat()
+
+            # Remover campos com valor None para reduzir tamanho do JSON
+            keys_to_remove = [k for k, v in dado.items() if v is None or (isinstance(v, float) and pd.isna(v))]
+            for key in keys_to_remove:
+                del dado[key]
 
         return jsonify({
             'success': True,
@@ -175,6 +173,8 @@ def get_dados():
 
     except Exception as e:
         logger.error(f"Erro ao buscar dados: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return jsonify({
             'success': False,
             'error': str(e)
@@ -185,14 +185,26 @@ def get_dados():
 def get_filtros():
     """Endpoint para obter opções de filtros"""
     try:
-        df = get_data_from_db()
+        df = get_all_data()
+
+        if df.empty:
+            return jsonify({
+                'success': True,
+                'filtros': {
+                    'categorias': [],
+                    'municipios': [],
+                    'regioes': [],
+                    'anos': [],
+                    'meses': []
+                }
+            })
 
         filtros = {
-            'tipos_ocorrencia': sorted(df['tipo_ocorrencia'].unique().tolist()),
-            'municipios': sorted(df['municipio'].unique().tolist()),
-            'regioes': sorted(df['regiao'].unique().tolist()),
-            'anos': sorted(df['ano'].unique().tolist()),
-            'meses': sorted([m for m in df['mes'].unique().tolist() if pd.notna(m)])
+            'categorias': ['Roubo', 'Furto', 'Mortes Violentas', 'Homicídio', 'Violência Doméstica'],
+            'municipios': sorted([str(m) for m in df['municipio'].unique() if pd.notna(m)]),
+            'regioes': sorted([str(r) for r in df['regiao'].unique() if pd.notna(r)]),
+            'anos': sorted([int(a) for a in df['ano'].unique() if pd.notna(a)]),
+            'meses': list(range(1, 13))
         }
 
         return jsonify({
@@ -212,31 +224,37 @@ def get_filtros():
 def get_estatisticas():
     """Endpoint para obter estatísticas gerais"""
     try:
-        df = get_data_from_db()
+        categoria = request.args.get('categoria', 'todas')
+        filtros = {
+            'ano': request.args.get('ano', type=int),
+            'mes': request.args.get('mes', type=int),
+            'municipio': request.args.get('municipio'),
+            'regiao': request.args.get('regiao')
+        }
 
-        # Aplicar filtros se houver
-        tipo_ocorrencia = request.args.get('tipo_ocorrencia')
-        if tipo_ocorrencia:
-            df = df[df['tipo_ocorrencia'] == tipo_ocorrencia]
+        filtros = {k: v for k, v in filtros.items() if v is not None}
 
-        municipio = request.args.get('municipio')
-        if municipio:
-            df = df[df['municipio'] == municipio]
+        if categoria == 'todas':
+            df = get_all_data(filtros)
+        else:
+            df = get_data_from_table(categoria, filtros)
 
-        regiao = request.args.get('regiao')
-        if regiao:
-            df = df[df['regiao'] == regiao]
-
-        ano = request.args.get('ano')
-        if ano:
-            df = df[df['ano'] == int(ano)]
+        if df.empty:
+            return jsonify({
+                'success': True,
+                'estatisticas': {
+                    'total_ocorrencias': 0,
+                    'total_registros': 0,
+                    'municipios_afetados': 0,
+                    'media_por_municipio': 0
+                }
+            })
 
         estatisticas = {
             'total_ocorrencias': int(df['quantidade'].sum()),
             'total_registros': len(df),
             'municipios_afetados': int(df['municipio'].nunique()),
-            'tipos_ocorrencia': int(df['tipo_ocorrencia'].nunique()),
-            'media_por_municipio': float(df.groupby('municipio')['quantidade'].sum().mean())
+            'media_por_municipio': float(df.groupby('municipio')['quantidade'].sum().mean()) if 'municipio' in df.columns else 0
         }
 
         return jsonify({
@@ -252,33 +270,30 @@ def get_estatisticas():
         }), 500
 
 
-@app.route('/api/grafico/ocorrencias-por-tipo')
-def grafico_ocorrencias_tipo():
-    """Gráfico de ocorrências por tipo"""
+@app.route('/api/grafico/ocorrencias-por-categoria')
+def grafico_ocorrencias_categoria():
+    """Gráfico de ocorrências por categoria"""
     try:
-        df = get_data_from_db()
+        filtros = {
+            'ano': request.args.get('ano', type=int),
+            'municipio': request.args.get('municipio'),
+            'regiao': request.args.get('regiao')
+        }
+        filtros = {k: v for k, v in filtros.items() if v is not None}
 
-        # Aplicar filtros
-        municipio = request.args.get('municipio')
-        if municipio:
-            df = df[df['municipio'] == municipio]
+        df = get_all_data(filtros)
 
-        regiao = request.args.get('regiao')
-        if regiao:
-            df = df[df['regiao'] == regiao]
+        if df.empty:
+            return jsonify({'success': False, 'error': 'Sem dados disponíveis'}), 404
 
-        ano = request.args.get('ano')
-        if ano:
-            df = df[df['ano'] == int(ano)]
-
-        # Agrupar por tipo de ocorrência
-        dados_agrupados = df.groupby('tipo_ocorrencia')['quantidade'].sum().sort_values(ascending=False)
+        # Agrupar por categoria
+        dados_agrupados = df.groupby('categoria')['quantidade'].sum().sort_values(ascending=False)
 
         fig = px.bar(
             x=dados_agrupados.index,
             y=dados_agrupados.values,
-            labels={'x': 'Tipo de Ocorrência', 'y': 'Quantidade'},
-            title='Ocorrências por Tipo',
+            labels={'x': 'Categoria', 'y': 'Quantidade'},
+            title='Ocorrências por Categoria',
             color=dados_agrupados.values,
             color_continuous_scale='Reds'
         )
@@ -305,20 +320,20 @@ def grafico_ocorrencias_tipo():
 def grafico_ocorrencias_municipio():
     """Gráfico de ocorrências por município"""
     try:
-        df = get_data_from_db()
+        categoria = request.args.get('categoria', 'todas')
+        filtros = {
+            'ano': request.args.get('ano', type=int),
+            'regiao': request.args.get('regiao')
+        }
+        filtros = {k: v for k, v in filtros.items() if v is not None}
 
-        # Aplicar filtros
-        tipo_ocorrencia = request.args.get('tipo_ocorrencia')
-        if tipo_ocorrencia:
-            df = df[df['tipo_ocorrencia'] == tipo_ocorrencia]
+        if categoria == 'todas':
+            df = get_all_data(filtros)
+        else:
+            df = get_data_from_table(categoria, filtros)
 
-        regiao = request.args.get('regiao')
-        if regiao:
-            df = df[df['regiao'] == regiao]
-
-        ano = request.args.get('ano')
-        if ano:
-            df = df[df['ano'] == int(ano)]
+        if df.empty:
+            return jsonify({'success': False, 'error': 'Sem dados disponíveis'}), 404
 
         # Agrupar por município (top 15)
         dados_agrupados = df.groupby('municipio')['quantidade'].sum().sort_values(ascending=False).head(15)
@@ -352,20 +367,20 @@ def grafico_ocorrencias_municipio():
 def grafico_evolucao_temporal():
     """Gráfico de evolução temporal"""
     try:
-        df = get_data_from_db()
+        categoria = request.args.get('categoria', 'todas')
+        filtros = {
+            'municipio': request.args.get('municipio'),
+            'regiao': request.args.get('regiao')
+        }
+        filtros = {k: v for k, v in filtros.items() if v is not None}
 
-        # Aplicar filtros
-        tipo_ocorrencia = request.args.get('tipo_ocorrencia')
-        if tipo_ocorrencia:
-            df = df[df['tipo_ocorrencia'] == tipo_ocorrencia]
+        if categoria == 'todas':
+            df = get_all_data(filtros)
+        else:
+            df = get_data_from_table(categoria, filtros)
 
-        municipio = request.args.get('municipio')
-        if municipio:
-            df = df[df['municipio'] == municipio]
-
-        regiao = request.args.get('regiao')
-        if regiao:
-            df = df[df['regiao'] == regiao]
+        if df.empty:
+            return jsonify({'success': False, 'error': 'Sem dados disponíveis'}), 404
 
         # Agrupar por ano
         dados_agrupados = df.groupby('ano')['quantidade'].sum().sort_index()
@@ -393,29 +408,32 @@ def grafico_evolucao_temporal():
         }), 500
 
 
-@app.route('/api/grafico/ocorrencias-por-regiao')
-def grafico_ocorrencias_regiao():
-    """Gráfico de pizza - ocorrências por região"""
+@app.route('/api/grafico/comparativo-categorias')
+def grafico_comparativo_categorias():
+    """Gráfico comparativo entre categorias ao longo do tempo"""
     try:
-        df = get_data_from_db()
+        filtros = {
+            'municipio': request.args.get('municipio'),
+            'regiao': request.args.get('regiao')
+        }
+        filtros = {k: v for k, v in filtros.items() if v is not None}
 
-        # Aplicar filtros
-        tipo_ocorrencia = request.args.get('tipo_ocorrencia')
-        if tipo_ocorrencia:
-            df = df[df['tipo_ocorrencia'] == tipo_ocorrencia]
+        df = get_all_data(filtros)
 
-        ano = request.args.get('ano')
-        if ano:
-            df = df[df['ano'] == int(ano)]
+        if df.empty:
+            return jsonify({'success': False, 'error': 'Sem dados disponíveis'}), 404
 
-        # Agrupar por região
-        dados_agrupados = df.groupby('regiao')['quantidade'].sum()
+        # Agrupar por ano e categoria
+        dados_agrupados = df.groupby(['ano', 'categoria'])['quantidade'].sum().reset_index()
 
-        fig = px.pie(
-            values=dados_agrupados.values,
-            names=dados_agrupados.index,
-            title='Distribuição de Ocorrências por Região',
-            hole=0.3
+        fig = px.line(
+            dados_agrupados,
+            x='ano',
+            y='quantidade',
+            color='categoria',
+            labels={'ano': 'Ano', 'quantidade': 'Quantidade', 'categoria': 'Categoria'},
+            title='Comparativo de Categorias ao Longo do Tempo',
+            markers=True
         )
 
         fig.update_layout(height=500)
@@ -427,6 +445,53 @@ def grafico_ocorrencias_regiao():
 
     except Exception as e:
         logger.error(f"Erro ao gerar gráfico: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/historico')
+def get_historico():
+    """Endpoint para obter histórico de execuções"""
+    try:
+        query = """
+        SELECT
+            id,
+            data_hora_inicio,
+            data_hora_fim,
+            status,
+            tipo_dados,
+            fonte,
+            registros_inseridos,
+            registros_atualizados,
+            registros_ignorados,
+            anos_processados,
+            mensagem
+        FROM historico_execucao
+        ORDER BY data_hora_inicio DESC
+        LIMIT 50
+        """
+
+        df = pd.read_sql(query, engine)
+        df = df.where(pd.notna(df), None)
+        historico = df.to_dict('records')
+
+        # Converter datetime para string
+        for item in historico:
+            if item.get('data_hora_inicio') and isinstance(item['data_hora_inicio'], datetime):
+                item['data_hora_inicio'] = item['data_hora_inicio'].isoformat()
+            if item.get('data_hora_fim') and isinstance(item['data_hora_fim'], datetime):
+                item['data_hora_fim'] = item['data_hora_fim'].isoformat()
+
+        return jsonify({
+            'success': True,
+            'total': len(historico),
+            'historico': historico
+        })
+
+    except Exception as e:
+        logger.error(f"Erro ao buscar histórico: {e}")
         return jsonify({
             'success': False,
             'error': str(e)

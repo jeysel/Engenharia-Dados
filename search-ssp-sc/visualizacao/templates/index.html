@@ -6,7 +6,43 @@
     <title>Dashboard SSP-SC - Segurança Pública de Santa Catarina</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <!-- jsPDF para exportação em PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .navbar {
+            box-shadow: 0 2px 4px rgba(0,0,0,.1);
+        }
+        .card {
+            border: none;
+            box-shadow: 0 2px 4px rgba(0,0,0,.1);
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            text-align: center;
+            padding: 20px;
+        }
+        .stat-card h3 {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .stat-card p {
+            color: #6c757d;
+            margin-bottom: 0;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        .loading.active {
+            display: block;
+        }
+    </style>
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
 </head>
 <body>
@@ -15,13 +51,18 @@
         <div class="container-fluid">
             <a class="navbar-brand" href="#">
                 <i class="bi bi-shield-check"></i>
-                Dashboard SSP-SC
+                Dashboard SSP-SC - Nova Versão
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="#historico" data-bs-toggle="tab">
+                            <i class="bi bi-clock-history"></i> Histórico
+                        </a>
+                    </li>
                     <li class="nav-item">
                         <a class="nav-link" href="#" id="atualizarDados">
                             <i class="bi bi-arrow-clockwise"></i> Atualizar
@@ -33,247 +74,980 @@
     </nav>
 
     <div class="container-fluid py-4">
-        <!-- Filtros -->
-        <div class="card mb-4 shadow-sm">
-            <div class="card-header bg-light">
-                <h5 class="mb-0">
-                    <i class="bi bi-funnel"></i> Filtros
-                </h5>
-            </div>
-            <div class="card-body">
-                <form id="filtrosForm">
-                    <div class="row g-3">
-                        <div class="col-md-3">
-                            <label for="filtroTipo" class="form-label">Tipo de Ocorrência</label>
-                            <select class="form-select" id="filtroTipo" name="tipo_ocorrencia">
-                                <option value="">Todos</option>
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label for="filtroMunicipio" class="form-label">Município</label>
-                            <select class="form-select" id="filtroMunicipio" name="municipio">
-                                <option value="">Todos</option>
-                            </select>
-                        </div>
-                        <div class="col-md-2">
-                            <label for="filtroRegiao" class="form-label">Região</label>
-                            <select class="form-select" id="filtroRegiao" name="regiao">
-                                <option value="">Todas</option>
-                            </select>
-                        </div>
-                        <div class="col-md-2">
-                            <label for="filtroAno" class="form-label">Ano</label>
-                            <select class="form-select" id="filtroAno" name="ano">
-                                <option value="">Todos</option>
-                            </select>
-                        </div>
-                        <div class="col-md-2">
-                            <label for="filtroMes" class="form-label">Mês</label>
-                            <select class="form-select" id="filtroMes" name="mes">
-                                <option value="">Todos</option>
-                                <option value="1">Janeiro</option>
-                                <option value="2">Fevereiro</option>
-                                <option value="3">Março</option>
-                                <option value="4">Abril</option>
-                                <option value="5">Maio</option>
-                                <option value="6">Junho</option>
-                                <option value="7">Julho</option>
-                                <option value="8">Agosto</option>
-                                <option value="9">Setembro</option>
-                                <option value="10">Outubro</option>
-                                <option value="11">Novembro</option>
-                                <option value="12">Dezembro</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="row mt-3">
-                        <div class="col-12">
-                            <button type="submit" class="btn btn-primary">
-                                <i class="bi bi-search"></i> Aplicar Filtros
-                            </button>
-                            <button type="button" class="btn btn-secondary" id="limparFiltros">
-                                <i class="bi bi-x-circle"></i> Limpar
-                            </button>
-                        </div>
-                    </div>
-                </form>
-            </div>
-        </div>
+        <!-- Tabs -->
+        <ul class="nav nav-tabs mb-4" id="mainTabs" role="tablist">
+            <li class="nav-item">
+                <a class="nav-link active" id="dashboard-tab" data-bs-toggle="tab" href="#dashboard">Dashboard</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" id="relatorios-tab" data-bs-toggle="tab" href="#relatorios">Relatórios</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" id="historico-tab" data-bs-toggle="tab" href="#historico">Histórico de Execuções</a>
+            </li>
+        </ul>
 
-        <!-- Cards de Estatísticas -->
-        <div class="row mb-4">
-            <div class="col-md-3 mb-3">
-                <div class="card stat-card shadow-sm">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h6 class="text-muted mb-2">Total de Ocorrências</h6>
-                                <h3 class="mb-0" id="statTotalOcorrencias">-</h3>
-                            </div>
-                            <div class="stat-icon bg-primary">
-                                <i class="bi bi-exclamation-triangle"></i>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="card stat-card shadow-sm">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h6 class="text-muted mb-2">Total de Registros</h6>
-                                <h3 class="mb-0" id="statTotalRegistros">-</h3>
-                            </div>
-                            <div class="stat-icon bg-success">
-                                <i class="bi bi-file-earmark-text"></i>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="card stat-card shadow-sm">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h6 class="text-muted mb-2">Municípios Afetados</h6>
-                                <h3 class="mb-0" id="statMunicipios">-</h3>
-                            </div>
-                            <div class="stat-icon bg-warning">
-                                <i class="bi bi-geo-alt"></i>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="card stat-card shadow-sm">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h6 class="text-muted mb-2">Média por Município</h6>
-                                <h3 class="mb-0" id="statMediaMunicipio">-</h3>
-                            </div>
-                            <div class="stat-icon bg-info">
-                                <i class="bi bi-graph-up"></i>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Gráficos -->
-        <div class="row">
-            <!-- Evolução Temporal -->
-            <div class="col-md-12 mb-4">
-                <div class="card shadow-sm">
+        <div class="tab-content">
+            <!-- Dashboard Tab -->
+            <div class="tab-pane fade show active" id="dashboard">
+                <!-- Filtros -->
+                <div class="card mb-4">
                     <div class="card-header bg-light">
                         <h5 class="mb-0">
-                            <i class="bi bi-graph-up-arrow"></i> Evolução Temporal
+                            <i class="bi bi-funnel"></i> Filtros
                         </h5>
                     </div>
                     <div class="card-body">
-                        <div id="graficoEvolucao"></div>
+                        <form id="filtrosForm">
+                            <div class="row g-3">
+                                <div class="col-md-3">
+                                    <label for="filtroCategoria" class="form-label">Categoria</label>
+                                    <select class="form-select" id="filtroCategoria" name="categoria">
+                                        <option value="todas">Todas</option>
+                                        <option value="roubo">Roubo</option>
+                                        <option value="furto">Furto</option>
+                                        <option value="mortes_violentas">Mortes Violentas</option>
+                                        <option value="homicidio">Homicídio</option>
+                                        <option value="violencia_domestica">Violência Doméstica</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <label for="filtroMunicipio" class="form-label">Município</label>
+                                    <select class="form-select" id="filtroMunicipio" name="municipio">
+                                        <option value="">Todos</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <label for="filtroRegiao" class="form-label">Região</label>
+                                    <select class="form-select" id="filtroRegiao" name="regiao">
+                                        <option value="">Todas</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <label for="filtroAno" class="form-label">Ano</label>
+                                    <select class="form-select" id="filtroAno" name="ano">
+                                        <option value="">Todos</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <label for="filtroMes" class="form-label">Mês</label>
+                                    <select class="form-select" id="filtroMes" name="mes">
+                                        <option value="">Todos</option>
+                                        <option value="1">Janeiro</option>
+                                        <option value="2">Fevereiro</option>
+                                        <option value="3">Março</option>
+                                        <option value="4">Abril</option>
+                                        <option value="5">Maio</option>
+                                        <option value="6">Junho</option>
+                                        <option value="7">Julho</option>
+                                        <option value="8">Agosto</option>
+                                        <option value="9">Setembro</option>
+                                        <option value="10">Outubro</option>
+                                        <option value="11">Novembro</option>
+                                        <option value="12">Dezembro</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="row mt-3">
+                                <div class="col-12">
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="bi bi-search"></i> Aplicar Filtros
+                                    </button>
+                                    <button type="button" class="btn btn-secondary" id="limparFiltros">
+                                        <i class="bi bi-x-circle"></i> Limpar
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Loading Spinner -->
+                <div class="loading" id="loading">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Carregando...</span>
+                    </div>
+                    <p class="mt-2">Carregando dados...</p>
+                </div>
+
+                <!-- Estatísticas -->
+                <div class="row mb-4" id="estatisticas">
+                    <div class="col-md-3">
+                        <div class="card stat-card bg-primary text-white">
+                            <h3 id="statTotalOcorrencias">0</h3>
+                            <p>Total de Ocorrências</p>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card stat-card bg-success text-white">
+                            <h3 id="statTotalRegistros">0</h3>
+                            <p>Total de Registros</p>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card stat-card bg-info text-white">
+                            <h3 id="statMunicipios">0</h3>
+                            <p>Municípios Afetados</p>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card stat-card bg-warning text-white">
+                            <h3 id="statMedia">0</h3>
+                            <p>Média por Município</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Gráficos -->
+                <div class="row">
+                    <div class="col-md-6 mb-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h6 class="mb-0">Ocorrências por Categoria</h6>
+                            </div>
+                            <div class="card-body">
+                                <div id="graficoCategoria"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h6 class="mb-0">Top 15 Municípios</h6>
+                            </div>
+                            <div class="card-body">
+                                <div id="graficoMunicipio"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-12 mb-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h6 class="mb-0">Evolução Temporal</h6>
+                            </div>
+                            <div class="card-body">
+                                <div id="graficoTemporal"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-12 mb-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h6 class="mb-0">Comparativo entre Categorias</h6>
+                            </div>
+                            <div class="card-body">
+                                <div id="graficoComparativo"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Ocorrências por Tipo -->
-            <div class="col-md-6 mb-4">
-                <div class="card shadow-sm">
+            <!-- Relatórios Tab -->
+            <div class="tab-pane fade" id="relatorios">
+                <!-- Filtros (mesmos do Dashboard) -->
+                <div class="card mb-4">
                     <div class="card-header bg-light">
                         <h5 class="mb-0">
-                            <i class="bi bi-bar-chart"></i> Ocorrências por Tipo
+                            <i class="bi bi-funnel"></i> Filtros
                         </h5>
                     </div>
                     <div class="card-body">
-                        <div id="graficoTipos"></div>
+                        <form id="filtrosFormRelatorio">
+                            <div class="row g-3">
+                                <div class="col-md-3">
+                                    <label for="filtroRelatorioCategoria" class="form-label">Categoria</label>
+                                    <select class="form-select" id="filtroRelatorioCategoria" name="categoria">
+                                        <option value="todas">Todas</option>
+                                        <option value="roubo">Roubo</option>
+                                        <option value="furto">Furto</option>
+                                        <option value="mortes_violentas">Mortes Violentas</option>
+                                        <option value="homicidio">Homicídio</option>
+                                        <option value="violencia_domestica">Violência Doméstica</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <label for="filtroRelatorioMunicipio" class="form-label">Município</label>
+                                    <select class="form-select" id="filtroRelatorioMunicipio" name="municipio">
+                                        <option value="">Todos</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <label for="filtroRelatorioRegiao" class="form-label">Região</label>
+                                    <select class="form-select" id="filtroRelatorioRegiao" name="regiao">
+                                        <option value="">Todas</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <label for="filtroRelatorioAno" class="form-label">Ano</label>
+                                    <select class="form-select" id="filtroRelatorioAno" name="ano">
+                                        <option value="">Todos</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <label for="filtroRelatorioMes" class="form-label">Mês</label>
+                                    <select class="form-select" id="filtroRelatorioMes" name="mes">
+                                        <option value="">Todos</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="row mt-3">
+                                <div class="col-12">
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="bi bi-search"></i> Gerar Relatório
+                                    </button>
+                                    <button type="button" class="btn btn-secondary" id="limparFiltrosRelatorio">
+                                        <i class="bi bi-x-circle"></i> Limpar
+                                    </button>
+                                    <button type="button" class="btn btn-success" id="exportarRelatorio">
+                                        <i class="bi bi-file-earmark-spreadsheet"></i> Exportar CSV
+                                    </button>
+                                    <button type="button" class="btn btn-danger" id="exportarRelatorioPDF">
+                                        <i class="bi bi-file-earmark-pdf"></i> Exportar PDF
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
                     </div>
                 </div>
-            </div>
 
-            <!-- Ocorrências por Região -->
-            <div class="col-md-6 mb-4">
-                <div class="card shadow-sm">
-                    <div class="card-header bg-light">
+                <!-- Resultados do Relatório -->
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
                         <h5 class="mb-0">
-                            <i class="bi bi-pie-chart"></i> Distribuição por Região
+                            <i class="bi bi-file-earmark-text"></i> Relatório de Dados
                         </h5>
                     </div>
                     <div class="card-body">
-                        <div id="graficoRegioes"></div>
+                        <div id="relatorioLoading" class="loading">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Carregando...</span>
+                            </div>
+                            <p class="mt-2">Gerando relatório...</p>
+                        </div>
+
+                        <div id="relatorioResultados" style="display:none;">
+                            <div class="alert alert-info mb-3">
+                                <strong>Total de registros:</strong> <span id="totalRegistrosRelatorio">0</span>
+                            </div>
+
+                            <div class="table-responsive">
+                                <table class="table table-striped table-hover table-sm" id="tabelaRelatorio">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th>Ano</th>
+                                            <th>Mês</th>
+                                            <th>Município</th>
+                                            <th>Região</th>
+                                            <th>Categoria</th>
+                                            <th>Tipo</th>
+                                            <th>Quantidade</th>
+                                            <th>Data Coleta</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tabelaRelatorioBody">
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div id="relatorioVazio" style="display:none;">
+                            <div class="alert alert-warning">
+                                <i class="bi bi-info-circle"></i> Nenhum dado encontrado com os filtros selecionados.
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Ocorrências por Município -->
-            <div class="col-md-12 mb-4">
-                <div class="card shadow-sm">
-                    <div class="card-header bg-light">
+            <!-- Histórico Tab -->
+            <div class="tab-pane fade" id="historico">
+                <div class="card">
+                    <div class="card-header">
                         <h5 class="mb-0">
-                            <i class="bi bi-building"></i> Top Municípios
+                            <i class="bi bi-clock-history"></i> Histórico de Execuções
                         </h5>
                     </div>
                     <div class="card-body">
-                        <div id="graficoMunicipios"></div>
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Data/Hora</th>
+                                        <th>Status</th>
+                                        <th>Tipo</th>
+                                        <th>Anos</th>
+                                        <th>Inseridos</th>
+                                        <th>Ignorados</th>
+                                        <th>Mensagem</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tabelaHistorico">
+                                    <tr>
+                                        <td colspan="7" class="text-center">Carregando...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-
-        <!-- Tabela de Dados -->
-        <div class="card shadow-sm">
-            <div class="card-header bg-light d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">
-                    <i class="bi bi-table"></i> Dados Detalhados
-                </h5>
-                <button class="btn btn-sm btn-success" id="exportarCSV">
-                    <i class="bi bi-download"></i> Exportar CSV
-                </button>
-            </div>
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table table-striped table-hover" id="tabelaDados">
-                        <thead>
-                            <tr>
-                                <th>Tipo de Ocorrência</th>
-                                <th>Município</th>
-                                <th>Região</th>
-                                <th>Ano</th>
-                                <th>Mês</th>
-                                <th>Quantidade</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tabelaDadosBody">
-                            <tr>
-                                <td colspan="6" class="text-center">Carregando dados...</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Footer -->
-    <footer class="bg-light mt-5 py-3">
-        <div class="container text-center">
-            <p class="text-muted mb-0">
-                Dashboard SSP-SC - Dados de Segurança Pública de Santa Catarina
-            </p>
-        </div>
-    </footer>
-
-    <!-- Loading Overlay -->
-    <div id="loadingOverlay" class="loading-overlay" style="display: none;">
-        <div class="spinner-border text-primary" role="status">
-            <span class="visually-hidden">Carregando...</span>
         </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script>
+        // Função para mostrar/ocultar loading
+        function showLoading(show) {
+            document.getElementById('loading').classList.toggle('active', show);
+        }
+
+        // Função para carregar filtros
+        async function carregarFiltros() {
+            try {
+                const response = await fetch('/api/filtros');
+                const data = await response.json();
+
+                if (data.success) {
+                    // Preencher municípios
+                    const selectMunicipio = document.getElementById('filtroMunicipio');
+                    selectMunicipio.innerHTML = '<option value="">Todos</option>';
+                    data.filtros.municipios.forEach(m => {
+                        const option = document.createElement('option');
+                        option.value = m;
+                        option.textContent = m;
+                        selectMunicipio.appendChild(option);
+                    });
+
+                    // Preencher regiões
+                    const selectRegiao = document.getElementById('filtroRegiao');
+                    selectRegiao.innerHTML = '<option value="">Todas</option>';
+                    data.filtros.regioes.forEach(r => {
+                        const option = document.createElement('option');
+                        option.value = r;
+                        option.textContent = r;
+                        selectRegiao.appendChild(option);
+                    });
+
+                    // Preencher anos
+                    const selectAno = document.getElementById('filtroAno');
+                    selectAno.innerHTML = '<option value="">Todos</option>';
+                    data.filtros.anos.forEach(a => {
+                        const option = document.createElement('option');
+                        option.value = a;
+                        option.textContent = a;
+                        selectAno.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Erro ao carregar filtros:', error);
+            }
+        }
+
+        // Função para carregar estatísticas
+        async function carregarEstatisticas(filtros = {}) {
+            try {
+                const params = new URLSearchParams(filtros);
+                const response = await fetch(`/api/estatisticas?${params}`);
+                const data = await response.json();
+
+                if (data.success) {
+                    document.getElementById('statTotalOcorrencias').textContent =
+                        data.estatisticas.total_ocorrencias.toLocaleString();
+                    document.getElementById('statTotalRegistros').textContent =
+                        data.estatisticas.total_registros.toLocaleString();
+                    document.getElementById('statMunicipios').textContent =
+                        data.estatisticas.municipios_afetados;
+                    document.getElementById('statMedia').textContent =
+                        Math.round(data.estatisticas.media_por_municipio);
+                }
+            } catch (error) {
+                console.error('Erro ao carregar estatísticas:', error);
+            }
+        }
+
+        // Função para carregar gráficos
+        async function carregarGraficos(filtros = {}) {
+            showLoading(true);
+
+            try {
+                const params = new URLSearchParams(filtros);
+
+                // Gráfico por categoria
+                const resCategoria = await fetch(`/api/grafico/ocorrencias-por-categoria?${params}`);
+                const dataCategoria = await resCategoria.json();
+                if (dataCategoria.success) {
+                    Plotly.newPlot('graficoCategoria', JSON.parse(dataCategoria.grafico).data,
+                        JSON.parse(dataCategoria.grafico).layout);
+                }
+
+                // Gráfico por município
+                const resMunicipio = await fetch(`/api/grafico/ocorrencias-por-municipio?${params}`);
+                const dataMunicipio = await resMunicipio.json();
+                if (dataMunicipio.success) {
+                    Plotly.newPlot('graficoMunicipio', JSON.parse(dataMunicipio.grafico).data,
+                        JSON.parse(dataMunicipio.grafico).layout);
+                }
+
+                // Gráfico temporal
+                const resTemporal = await fetch(`/api/grafico/evolucao-temporal?${params}`);
+                const dataTemporal = await resTemporal.json();
+                if (dataTemporal.success) {
+                    Plotly.newPlot('graficoTemporal', JSON.parse(dataTemporal.grafico).data,
+                        JSON.parse(dataTemporal.grafico).layout);
+                }
+
+                // Gráfico comparativo
+                const resComparativo = await fetch(`/api/grafico/comparativo-categorias?${params}`);
+                const dataComparativo = await resComparativo.json();
+                if (dataComparativo.success) {
+                    Plotly.newPlot('graficoComparativo', JSON.parse(dataComparativo.grafico).data,
+                        JSON.parse(dataComparativo.grafico).layout);
+                }
+
+            } catch (error) {
+                console.error('Erro ao carregar gráficos:', error);
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Função para carregar histórico
+        async function carregarHistorico() {
+            try {
+                const response = await fetch('/api/historico');
+                const data = await response.json();
+
+                const tbody = document.getElementById('tabelaHistorico');
+                tbody.innerHTML = '';
+
+                if (data.success && data.historico.length > 0) {
+                    data.historico.forEach(item => {
+                        const tr = document.createElement('tr');
+
+                        const dataHora = new Date(item.data_hora_inicio).toLocaleString('pt-BR');
+                        const statusBadge = item.status === 'sucesso' ? 'bg-success' :
+                                          item.status === 'erro' ? 'bg-danger' : 'bg-warning';
+
+                        tr.innerHTML = `
+                            <td>${dataHora}</td>
+                            <td><span class="badge ${statusBadge}">${item.status}</span></td>
+                            <td>${item.tipo_dados}</td>
+                            <td>${item.anos_processados || '-'}</td>
+                            <td>${item.registros_inseridos || 0}</td>
+                            <td>${item.registros_ignorados || 0}</td>
+                            <td>${item.mensagem || '-'}</td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center">Nenhum registro encontrado</td></tr>';
+                }
+            } catch (error) {
+                console.error('Erro ao carregar histórico:', error);
+            }
+        }
+
+        // Event listeners
+        document.getElementById('filtrosForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const filtros = Object.fromEntries(formData.entries());
+
+            // Remover filtros vazios
+            Object.keys(filtros).forEach(key => {
+                if (!filtros[key]) delete filtros[key];
+            });
+
+            carregarEstatisticas(filtros);
+            carregarGraficos(filtros);
+        });
+
+        document.getElementById('limparFiltros').addEventListener('click', function() {
+            document.getElementById('filtrosForm').reset();
+            carregarEstatisticas();
+            carregarGraficos();
+        });
+
+        document.getElementById('atualizarDados').addEventListener('click', function(e) {
+            e.preventDefault();
+            location.reload();
+        });
+
+        // Carregar histórico quando a tab é ativada
+        document.getElementById('historico-tab').addEventListener('click', function() {
+            carregarHistorico();
+        });
+
+        // ===== FUNÇÕES DA ABA RELATÓRIOS =====
+
+        // Carregar filtros na aba Relatórios
+        function carregarFiltrosRelatorio() {
+            fetch('/api/filtros')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        const filtros = data.filtros;
+
+                        // Preencher municípios
+                        const selectMunicipio = document.getElementById('filtroRelatorioMunicipio');
+                        selectMunicipio.innerHTML = '<option value="">Todos</option>';
+                        filtros.municipios.forEach(m => {
+                            selectMunicipio.innerHTML += `<option value="${m}">${m}</option>`;
+                        });
+
+                        // Preencher regiões
+                        const selectRegiao = document.getElementById('filtroRelatorioRegiao');
+                        selectRegiao.innerHTML = '<option value="">Todas</option>';
+                        filtros.regioes.forEach(r => {
+                            selectRegiao.innerHTML += `<option value="${r}">${r}</option>`;
+                        });
+
+                        // Preencher anos
+                        const selectAno = document.getElementById('filtroRelatorioAno');
+                        selectAno.innerHTML = '<option value="">Todos</option>';
+                        filtros.anos.forEach(a => {
+                            selectAno.innerHTML += `<option value="${a}">${a}</option>`;
+                        });
+                    }
+                })
+                .catch(error => console.error('Erro ao carregar filtros:', error));
+        }
+
+        // Gerar relatório
+        function gerarRelatorio(filtros) {
+            const loadingRelatorio = document.getElementById('relatorioLoading');
+            const resultadosRelatorio = document.getElementById('relatorioResultados');
+            const tabelaRelatorioBody = document.getElementById('tabelaRelatorioBody');
+            const emptyStateRelatorio = document.getElementById('relatorioVazio');
+            const totalRegistrosSpan = document.getElementById('totalRegistrosRelatorio');
+
+            // Mostrar loading
+            loadingRelatorio.style.display = 'block';
+            resultadosRelatorio.style.display = 'none';
+            emptyStateRelatorio.style.display = 'none';
+
+            // Construir query string
+            const params = new URLSearchParams();
+            Object.keys(filtros).forEach(key => {
+                if (filtros[key]) params.append(key, filtros[key]);
+            });
+
+            fetch(`/api/dados?${params}`)
+                .then(response => response.json())
+                .then(data => {
+                    loadingRelatorio.style.display = 'none';
+
+                    if (data.success && data.dados && data.dados.length > 0) {
+                        let registros = data.dados;
+
+                        // Limpar tabela
+                        tabelaRelatorioBody.innerHTML = '';
+
+                        // Processar registros para agrupamento
+                        registros = registros.map(registro => {
+                            // Determinar categoria
+                            let categoria = registro.categoria || '';
+                            if (!categoria) {
+                                if (registro.tipo_homicidio) categoria = 'Homicídio';
+                                else if (registro.tipo_roubo) categoria = 'Roubo';
+                                else if (registro.tipo_furto) categoria = 'Furto';
+                                else if (registro.tipo_morte) categoria = 'Mortes Violentas';
+                                else if (registro.tipo_violencia) categoria = 'Violência Doméstica';
+                            }
+
+                            // Determinar tipo específico
+                            const tipo = registro.tipo_homicidio || registro.tipo_roubo ||
+                                       registro.tipo_furto || registro.tipo_morte ||
+                                       registro.tipo_violencia || '-';
+
+                            // Para dados estaduais agregados, exibir de forma mais clara
+                            let municipio = registro.municipio || '-';
+                            let regiao = registro.regiao || '-';
+
+                            if (municipio === 'Santa Catarina' && regiao === 'Estado') {
+                                municipio = '(Todo o Estado)';
+                                regiao = 'Santa Catarina';
+                            }
+
+                            return {
+                                ...registro,
+                                categoria_display: categoria,
+                                tipo_display: tipo,
+                                municipio_display: municipio,
+                                regiao_display: regiao,
+                                ano: registro.ano || 0,
+                                mes: registro.mes || 0
+                            };
+                        });
+
+                        // Ordenar por: Município, Ano, Mês
+                        registros.sort((a, b) => {
+                            // Primeiro por município
+                            if (a.municipio_display < b.municipio_display) return -1;
+                            if (a.municipio_display > b.municipio_display) return 1;
+                            // Depois por ano
+                            if (a.ano < b.ano) return -1;
+                            if (a.ano > b.ano) return 1;
+                            // Depois por mês
+                            if (a.mes < b.mes) return -1;
+                            if (a.mes > b.mes) return 1;
+                            return 0;
+                        });
+
+                        // Calcular totais por município e tipo
+                        const totaisPorMunicipioTipo = {};
+                        registros.forEach(registro => {
+                            const chaveMunicipio = registro.municipio_display;
+                            const chaveTipo = `${registro.categoria_display} - ${registro.tipo_display}`;
+
+                            if (!totaisPorMunicipioTipo[chaveMunicipio]) {
+                                totaisPorMunicipioTipo[chaveMunicipio] = {};
+                            }
+
+                            if (!totaisPorMunicipioTipo[chaveMunicipio][chaveTipo]) {
+                                totaisPorMunicipioTipo[chaveMunicipio][chaveTipo] = 0;
+                            }
+
+                            totaisPorMunicipioTipo[chaveMunicipio][chaveTipo] += (registro.quantidade || 0);
+                        });
+
+                        // Preencher tabela com agrupamento
+                        let municipioAtual = null;
+
+                        registros.forEach((registro, index) => {
+                            // Adicionar linha de separação para novo município
+                            if (municipioAtual !== registro.municipio_display) {
+                                municipioAtual = registro.municipio_display;
+
+                                const separatorRow = document.createElement('tr');
+                                separatorRow.className = 'table-primary';
+                                separatorRow.innerHTML = `
+                                    <td colspan="8" class="fw-bold">
+                                        <i class="bi bi-geo-alt-fill"></i> ${municipioAtual}
+                                    </td>
+                                `;
+                                tabelaRelatorioBody.appendChild(separatorRow);
+                            }
+
+                            // Linha de dados
+                            const row = document.createElement('tr');
+                            const ano = registro.ano || '-';
+                            const mes = registro.mes || '-';
+                            const quantidade = registro.quantidade || 0;
+                            const dataColeta = registro.data_coleta ?
+                                new Date(registro.data_coleta).toLocaleDateString('pt-BR') : '-';
+
+                            row.innerHTML = `
+                                <td>${ano}</td>
+                                <td>${mes}</td>
+                                <td>${registro.municipio_display}</td>
+                                <td>${registro.regiao_display}</td>
+                                <td>${registro.categoria_display}</td>
+                                <td>${registro.tipo_display}</td>
+                                <td class="text-end">${quantidade.toLocaleString('pt-BR')}</td>
+                                <td>${dataColeta}</td>
+                            `;
+
+                            tabelaRelatorioBody.appendChild(row);
+
+                            // Verificar se é o último registro deste município
+                            const isUltimoDoMunicipio = (index === registros.length - 1) ||
+                                                       (registros[index + 1].municipio_display !== municipioAtual);
+
+                            // Adicionar linha de subtotais ao final de cada município
+                            if (isUltimoDoMunicipio) {
+                                const totaisMunicipio = totaisPorMunicipioTipo[municipioAtual];
+
+                                // Criar linhas de subtotal por tipo
+                                Object.entries(totaisMunicipio).forEach(([tipo, total]) => {
+                                    const subtotalRow = document.createElement('tr');
+                                    subtotalRow.className = 'table-warning fw-bold';
+                                    subtotalRow.innerHTML = `
+                                        <td colspan="5" class="text-end">Subtotal ${municipioAtual} - ${tipo}:</td>
+                                        <td></td>
+                                        <td class="text-end">${total.toLocaleString('pt-BR')}</td>
+                                        <td></td>
+                                    `;
+                                    tabelaRelatorioBody.appendChild(subtotalRow);
+                                });
+                            }
+                        });
+
+                        // Adicionar totais gerais ao final do relatório
+                        const totaisGeraisPorTipo = {};
+                        registros.forEach(registro => {
+                            const chaveTipo = `${registro.categoria_display} - ${registro.tipo_display}`;
+                            if (!totaisGeraisPorTipo[chaveTipo]) {
+                                totaisGeraisPorTipo[chaveTipo] = 0;
+                            }
+                            totaisGeraisPorTipo[chaveTipo] += (registro.quantidade || 0);
+                        });
+
+                        // Linha separadora antes dos totais gerais
+                        const separadorTotaisRow = document.createElement('tr');
+                        separadorTotaisRow.className = 'table-dark';
+                        separadorTotaisRow.innerHTML = `
+                            <td colspan="8" class="fw-bold text-center">
+                                <i class="bi bi-calculator"></i> TOTAIS GERAIS
+                            </td>
+                        `;
+                        tabelaRelatorioBody.appendChild(separadorTotaisRow);
+
+                        // Linhas de totais gerais por tipo
+                        Object.entries(totaisGeraisPorTipo).sort((a, b) => a[0].localeCompare(b[0])).forEach(([tipo, total]) => {
+                            const totalGeralRow = document.createElement('tr');
+                            totalGeralRow.className = 'table-success fw-bold';
+                            totalGeralRow.innerHTML = `
+                                <td colspan="5" class="text-end">Total Geral - ${tipo}:</td>
+                                <td></td>
+                                <td class="text-end">${total.toLocaleString('pt-BR')}</td>
+                                <td></td>
+                            `;
+                            tabelaRelatorioBody.appendChild(totalGeralRow);
+                        });
+
+                        // Total geral absoluto (soma de tudo)
+                        const totalAbsoluto = Object.values(totaisGeraisPorTipo).reduce((sum, val) => sum + val, 0);
+                        const totalAbsolutoRow = document.createElement('tr');
+                        totalAbsolutoRow.className = 'table-danger fw-bold';
+                        totalAbsolutoRow.style.fontSize = '1.1em';
+                        totalAbsolutoRow.innerHTML = `
+                            <td colspan="5" class="text-end">TOTAL GERAL ABSOLUTO:</td>
+                            <td></td>
+                            <td class="text-end">${totalAbsoluto.toLocaleString('pt-BR')}</td>
+                            <td></td>
+                        `;
+                        tabelaRelatorioBody.appendChild(totalAbsolutoRow);
+
+                        // Atualizar contador de registros
+                        totalRegistrosSpan.textContent = registros.length;
+
+                        resultadosRelatorio.style.display = 'block';
+                    } else {
+                        emptyStateRelatorio.style.display = 'block';
+                    }
+                })
+                .catch(error => {
+                    console.error('Erro ao gerar relatório:', error);
+                    loadingRelatorio.style.display = 'none';
+                    emptyStateRelatorio.style.display = 'block';
+                });
+        }
+
+        // Exportar relatório para CSV
+        function exportarRelatorioCSV() {
+            const tabela = document.getElementById('tabelaRelatorioBody');
+            const rows = tabela.getElementsByTagName('tr');
+
+            if (rows.length === 0) {
+                alert('Nenhum dado disponível para exportar. Gere um relatório primeiro.');
+                return;
+            }
+
+            // Cabeçalho CSV
+            const headers = ['Ano', 'Mês', 'Município', 'Região', 'Categoria', 'Tipo', 'Quantidade', 'Data Coleta'];
+            let csvContent = headers.join(';') + '\n';
+
+            // Adicionar linhas (pular linhas de agrupamento)
+            Array.from(rows).forEach(row => {
+                // Pular linhas de cabeçalho de município (que têm colspan="8")
+                const cells = row.getElementsByTagName('td');
+                if (cells.length === 1 && cells[0].getAttribute('colspan') === '8') {
+                    return; // Pular linha de agrupamento
+                }
+                const rowData = Array.from(cells).map(cell => {
+                    let value = cell.textContent.trim();
+                    // Escapar aspas e adicionar aspas se contiver ponto e vírgula
+                    if (value.includes(';') || value.includes('"') || value.includes('\n')) {
+                        value = '"' + value.replace(/"/g, '""') + '"';
+                    }
+                    return value;
+                });
+                csvContent += rowData.join(';') + '\n';
+            });
+
+            // Criar arquivo e download
+            const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+
+            const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+            link.setAttribute('href', url);
+            link.setAttribute('download', `relatorio_ssp_sc_${timestamp}.csv`);
+            link.style.visibility = 'hidden';
+
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // Exportar relatório para PDF
+        function exportarRelatorioPDF() {
+            const tabela = document.getElementById('tabelaRelatorioBody');
+            const rows = tabela.getElementsByTagName('tr');
+
+            if (rows.length === 0) {
+                alert('Nenhum dado disponível para exportar. Gere um relatório primeiro.');
+                return;
+            }
+
+            // Coletar dados para o PDF
+            const dadosPDF = [];
+            let municipioAtual = '';
+
+            Array.from(rows).forEach(row => {
+                const cells = row.getElementsByTagName('td');
+
+                // Verificar se é linha de agrupamento
+                if (cells.length === 1 && cells[0].getAttribute('colspan') === '8') {
+                    municipioAtual = cells[0].textContent.trim().replace('📍 ', '');
+                    return;
+                }
+
+                // Linha de dados
+                if (cells.length === 8) {
+                    const rowData = [
+                        cells[0].textContent.trim(), // Ano
+                        cells[1].textContent.trim(), // Mês
+                        cells[2].textContent.trim(), // Município
+                        cells[3].textContent.trim(), // Região
+                        cells[4].textContent.trim(), // Categoria
+                        cells[5].textContent.trim(), // Tipo
+                        cells[6].textContent.trim(), // Quantidade
+                        cells[7].textContent.trim()  // Data Coleta
+                    ];
+                    dadosPDF.push(rowData);
+                }
+            });
+
+            if (dadosPDF.length === 0) {
+                alert('Nenhum dado disponível para exportar.');
+                return;
+            }
+
+            // Criar PDF usando jsPDF
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF({
+                orientation: 'landscape',
+                unit: 'mm',
+                format: 'a4'
+            });
+
+            // Título
+            doc.setFontSize(16);
+            doc.setFont('helvetica', 'bold');
+            doc.text('Relatório SSP-SC - Segurança Pública de Santa Catarina', 15, 15);
+
+            // Data de geração
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'normal');
+            const dataGeracao = new Date().toLocaleString('pt-BR');
+            doc.text(`Gerado em: ${dataGeracao}`, 15, 22);
+
+            // Tabela
+            doc.autoTable({
+                head: [['Ano', 'Mês', 'Município', 'Região', 'Categoria', 'Tipo', 'Quantidade', 'Data Coleta']],
+                body: dadosPDF,
+                startY: 28,
+                styles: {
+                    fontSize: 8,
+                    cellPadding: 2,
+                    overflow: 'linebreak',
+                    halign: 'left'
+                },
+                headStyles: {
+                    fillColor: [41, 128, 185],
+                    textColor: 255,
+                    fontStyle: 'bold',
+                    halign: 'center'
+                },
+                alternateRowStyles: {
+                    fillColor: [245, 245, 245]
+                },
+                margin: { top: 28, right: 10, bottom: 10, left: 10 },
+                theme: 'grid',
+                columnStyles: {
+                    0: { cellWidth: 15 },  // Ano
+                    1: { cellWidth: 12 },  // Mês
+                    2: { cellWidth: 40 },  // Município
+                    3: { cellWidth: 30 },  // Região
+                    4: { cellWidth: 35 },  // Categoria
+                    5: { cellWidth: 35 },  // Tipo
+                    6: { cellWidth: 20, halign: 'right' },  // Quantidade
+                    7: { cellWidth: 25 }   // Data Coleta
+                },
+                didDrawPage: function (data) {
+                    // Rodapé com número de página
+                    const pageCount = doc.internal.getNumberOfPages();
+                    const pageNumber = doc.internal.getCurrentPageInfo().pageNumber;
+                    doc.setFontSize(8);
+                    doc.text(
+                        `Página ${pageNumber} de ${pageCount}`,
+                        doc.internal.pageSize.getWidth() / 2,
+                        doc.internal.pageSize.getHeight() - 10,
+                        { align: 'center' }
+                    );
+                }
+            });
+
+            // Salvar PDF
+            const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+            doc.save(`relatorio_ssp_sc_${timestamp}.pdf`);
+        }
+
+        // Event listeners da aba Relatórios
+        document.getElementById('relatorios-tab').addEventListener('click', function() {
+            carregarFiltrosRelatorio();
+        });
+
+        document.getElementById('filtrosFormRelatorio').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const filtros = Object.fromEntries(formData.entries());
+
+            // Converter categoria "todas" para vazio (buscar tudo)
+            if (filtros.categoria === 'todas') {
+                delete filtros.categoria;
+            }
+
+            // Remover filtros vazios
+            Object.keys(filtros).forEach(key => {
+                if (!filtros[key]) delete filtros[key];
+            });
+
+            gerarRelatorio(filtros);
+        });
+
+        document.getElementById('limparFiltrosRelatorio').addEventListener('click', function() {
+            document.getElementById('filtrosFormRelatorio').reset();
+            document.getElementById('relatorioResultados').style.display = 'none';
+            document.getElementById('relatorioVazio').style.display = 'none';
+            document.getElementById('relatorioLoading').style.display = 'none';
+        });
+
+        document.getElementById('exportarRelatorio').addEventListener('click', function(e) {
+            e.preventDefault();
+            exportarRelatorioCSV();
+        });
+
+        document.getElementById('exportarRelatorioPDF').addEventListener('click', function(e) {
+            e.preventDefault();
+            exportarRelatorioPDF();
+        });
+
+        // Inicializar ao carregar a página
+        document.addEventListener('DOMContentLoaded', function() {
+            carregarFiltros();
+            carregarEstatisticas();
+            carregarGraficos();
+        });
+    </script>
 </body>
 </html>

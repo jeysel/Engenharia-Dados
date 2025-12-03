@@ -16,4 +16,4 @@ COPY . .
 EXPOSE 5000
 
 # Comando para iniciar a aplicação
-CMD ["python", "app_new.py"]
+CMD ["python", "app.py"]
