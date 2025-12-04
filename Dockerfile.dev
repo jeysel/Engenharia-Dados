@@ -1,0 +1,73 @@
+FROM ubuntu:24.04 
+
+# Evita prompts interativos durante instalação
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=America/Sao_Paulo
+
+# Atualiza e instala ferramentas essenciais
+RUN apt-get update && apt-get install -y \
+    # Ferramentas básicas
+    git \
+    curl \
+    wget \
+    vim \
+    nano \
+    zip \
+    unzip \
+    ca-certificates \
+    gnupg \
+    lsb-release \
+    software-properties-common \
+    # Python e dependências
+    python3 \
+    python3-pip \
+    python3-venv \
+    # Node.js 
+    nodejs \
+    npm \
+    # Build essentials
+    build-essential \
+    # Docker CLI
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Instala Docker CLI
+RUN install -m 0755 -d /etc/apt/keyrings && \
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg && \
+    chmod a+r /etc/apt/keyrings/docker.gpg && \
+    echo \
+    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+    $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null && \
+    apt-get update && \
+    apt-get install -y docker-ce-cli docker-compose-plugin && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Instala docker-compose standalone (versão tradicional)
+RUN curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose && \
+    chmod +x /usr/local/bin/docker-compose
+
+# Configura Python e instala ferramentas Python comuns
+# Usando ambiente virtual para evitar conflitos com pacotes do sistema
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+RUN pip install --upgrade pip setuptools wheel && \
+    pip install \
+    requests \
+    beautifulsoup4 \
+    pandas \
+    numpy \
+    flask \
+    fastapi \
+    uvicorn
+
+# Configura Git (será sobrescrito pelas variáveis de ambiente)
+RUN git config --global core.autocrlf input && \
+    git config --global init.defaultBranch main
+
+# Define diretório de trabalho
+WORKDIR /workspace
+
+# Mantém o container rodando
+CMD ["/bin/bash"]

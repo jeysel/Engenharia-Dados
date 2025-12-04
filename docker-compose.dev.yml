@@ -1,0 +1,45 @@
+services:
+  ubuntu-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: engenharia-dados-dev
+    hostname: engenharia-dev
+
+    # Monta o repositório completo
+    volumes:
+      - .:/workspace
+      # Acesso ao Docker do host (Docker-in-Docker)
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Cache do pip para não reinstalar pacotes
+      - pip-cache:/root/.cache/pip
+      # Histórico do bash persistente
+      - bash-history:/root
+
+    # Variáveis de ambiente para Git
+    environment:
+      - GIT_USER_NAME=${GIT_USER_NAME:-Seu Nome}
+      - GIT_USER_EMAIL=${GIT_USER_EMAIL:-seu.email@example.com}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+
+    # Diretório de trabalho
+    working_dir: /workspace
+
+    # Mantém container ativo e interativo
+    stdin_open: true
+    tty: true
+
+    # Rede compartilhada com outros projetos
+    networks:
+      - engenharia-network
+
+    # Reinicia automaticamente
+    restart: unless-stopped
+
+networks:
+  engenharia-network:
+    driver: bridge
+
+volumes:
+  pip-cache:
+  bash-history:

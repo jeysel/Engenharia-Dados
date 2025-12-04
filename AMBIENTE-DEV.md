@@ -1,9 +1,3 @@
-# Engenharia-Dados
-Projetos de engenharia de dados para estudo
----
-
-## 📁 Ambiente para execução dos projetos
-
 # Ambiente de Desenvolvimento Ubuntu
 
 Este é um ambiente Docker completo baseado em Ubuntu para desenvolvimento de todos os projetos de Engenharia de Dados.
@@ -47,7 +41,6 @@ Configure:
 5. Cole no arquivo `.env`
 
 ### 2. Construa e inicie o ambiente
-* No Windows utilize PowerShell e tenha o WSL ativo
 
 ```bash
 docker-compose -f docker-compose.dev.yml up -d --build
@@ -117,7 +110,7 @@ nano docker-compose.yml
 docker-compose up -d
 ```
 
-### Trabalhando com Git
+### Trabalhar com Git
 
 ```bash
 # Ver status
@@ -142,11 +135,28 @@ git push -u origin feature/nova-funcionalidade
 ### Instalar pacotes Python
 
 ```bash
-#  usar venv para projetos específicos
+# Instalar no ambiente global do container
+pip3 install nome-do-pacote
+
+# Ou usar venv para projetos específicos
 cd meu-projeto
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
+```
+
+## Estrutura de Pastas
+
+```
+Engenharia-Dados/
+├── Dockerfile.dev              # Imagem Ubuntu personalizada
+├── docker-compose.dev.yml      # Configuração do ambiente dev
+├── .env                        # Suas credenciais (não commitado)
+├── .env.example                # Modelo de configuração
+├── search-ssp-sc/             # Projeto exemplo
+│   ├── docker-compose-autonomous.yml
+│   └── ...
+└── [outros projetos]/
 ```
 
 ## Comandos Úteis
@@ -268,50 +278,3 @@ docker volume prune
 ### Fazer backup
 
 Os dados importantes estão no repositório (montado como volume), então basta fazer commit e push regularmente.
-
-
-
-## 🔐 Configuração de Segurança
-**IMPORTANTE**: Este repositório contém projetos que utilizam APIs e credenciais.
-
-### Antes de executar os projetos:
-
-1. **Configure as variáveis de ambiente**:
-   - Copie os arquivos `.env.example` para `.env` em cada projeto
-   - Preencha as credenciais necessárias
-   - **NUNCA** commite arquivos `.env` no Git
-
-2. **Arquivos de exemplo disponíveis**:
-   - `ETL-Real-Time/servidor/.env.example`
-   - `search-ssp-sc/extrator/.env.example`
-   - `search-ssp-sc/visualizacao/.env.example`
-
-3. **Credenciais necessárias**:
-   - **ETL-Real-Time**: Token JWT do dados.gov.br
-   - **search-ssp-sc**: Credenciais PostgreSQL (ambiente Docker)
-
----
-
-## 🚀 Como Começar
-
-Consulte a documentação específica de cada projeto para instruções detalhadas de instalação e uso.
-
-
-## 📁 Projetos
-
-### 1. ETL-Real-Time
-Pipeline ETL em tempo real para dados de segurança pública (SINESP) usando Apache Airflow, Kafka, Spark Streaming e Cassandra.
-
-**Fonte**: [dados.gov.br](https://dados.gov.br/)
-**Documentação**: [ETL-Real-Time\Guia-Execução.md](ETL-Real-Time\Guia-Execução.md)
-
-### 2. search-ssp-sc
-Sistema de extração de dados de segurança pública com OCR para processar relatórios em PDF da SSP/SC.
-
-**Fonte**: [SSP/SC - Segurança em Números](https://ssp.sc.gov.br/segurancaemnumeros/)
-**Documentação**: [search-ssp-sc\Como-Usar.md](search-ssp-sc\Como-Usar.md)
-
----
-
-
-
