@@ -36,8 +36,6 @@ services:
     networks:
       - ssp-network
     restart: "no"
-    profiles:
-      - manual
 
   # Sistema de Visualização
   visualizacao:

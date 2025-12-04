@@ -3,24 +3,12 @@ Projetos de engenharia de dados para estudo
 
 ---
 
-## 📁 Projetos
-
-### 1. ETL-Real-Time
-Pipeline ETL em tempo real para dados de segurança pública (SINESP) usando Apache Airflow, Kafka, Spark Streaming e Cassandra.
-
-**Fonte**: [dados.gov.br](https://dados.gov.br/)
-**Documentação**: [ETL-Real-Time\Guia-Execução.md](ETL-Real-Time\Guia-Execução.md)
-
-### 2. search-ssp-sc
-Sistema de extração de dados de segurança pública com OCR para processar relatórios em PDF da SSP/SC.
-
-**Fonte**: [SSP/SC - Segurança em Números](https://ssp.sc.gov.br/segurancaemnumeros/)
-**Documentação**: [search-ssp-sc\Como-Usar.md](search-ssp-sc\Como-Usar.md)
-
----
+## 📁 Conteiner Docker/Linux para utilizar todos os projetos
+....
+....
+.....
 
 ## 🔐 Configuração de Segurança
-
 **IMPORTANTE**: Este repositório contém projetos que utilizam APIs e credenciais.
 
 ### Antes de executar os projetos:
@@ -44,4 +32,23 @@ Sistema de extração de dados de segurança pública com OCR para processar rel
 ## 🚀 Como Começar
 
 Consulte a documentação específica de cada projeto para instruções detalhadas de instalação e uso.
+
+
+## 📁 Projetos
+
+### 1. ETL-Real-Time
+Pipeline ETL em tempo real para dados de segurança pública (SINESP) usando Apache Airflow, Kafka, Spark Streaming e Cassandra.
+
+**Fonte**: [dados.gov.br](https://dados.gov.br/)
+**Documentação**: [ETL-Real-Time\Guia-Execução.md](ETL-Real-Time\Guia-Execução.md)
+
+### 2. search-ssp-sc
+Sistema de extração de dados de segurança pública com OCR para processar relatórios em PDF da SSP/SC.
+
+**Fonte**: [SSP/SC - Segurança em Números](https://ssp.sc.gov.br/segurancaemnumeros/)
+**Documentação**: [search-ssp-sc\Como-Usar.md](search-ssp-sc\Como-Usar.md)
+
+---
+
+
 

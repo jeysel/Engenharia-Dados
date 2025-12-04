@@ -25,5 +25,5 @@ RUN mkdir -p /app/data
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
-# Comando padrão
-CMD ["python", "extractor.py"]
+# Comando padrão - mantém container rodando para execuções manuais
+CMD ["tail", "-f", "/dev/null"]
