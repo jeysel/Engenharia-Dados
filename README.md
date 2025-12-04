@@ -64,6 +64,15 @@ Este comando irá:
 docker exec -it engenharia-dados-dev bash
 ```
 
+## Configurar VSCODE + GitHub
+VSCODE -> Remote Explorer -> engenharia-dados -> /workspace -> Open
+
+Git ->  git config user.name "seu nome" && git config user.email "email.email@gmail.com"
+
+
+GitHub -> git clone https://github.com/jeysel/Engenharia-Dados.git
+
+
 ## Uso Diário
 
 ### Iniciar o ambiente
