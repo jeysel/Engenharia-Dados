@@ -109,45 +109,6 @@ cd search-ssp-sc
 docker-compose -f docker-compose-autonomous.yml up -d
 docker-compose logs -f
 ```
-
-### Criar um novo projeto
-
-```bash
-# Dentro do container Ubuntu
-mkdir meu-novo-projeto
-cd meu-novo-projeto
-
-# Crie seus arquivos
-nano app.py
-nano Dockerfile
-nano docker-compose.yml
-
-# Execute o projeto
-docker-compose up -d
-```
-
-### Trabalhando com Git
-
-```bash
-# Ver status
-git status
-
-# Adicionar arquivos
-git add .
-
-# Commitar
-git commit -m "Descrição das alterações"
-
-# Enviar para GitHub
-git push origin main
-
-# Criar novo branch
-git checkout -b feature/nova-funcionalidade
-
-# Enviar novo branch
-git push -u origin feature/nova-funcionalidade
-```
-
 ### Instalar pacotes Python
 
 ```bash
@@ -273,12 +234,6 @@ docker-compose -f docker-compose.dev.yml up -d
 ```bash
 docker volume prune
 ```
-
-### Fazer backup
-
-Os dados importantes estão no repositório (montado como volume), então basta fazer commit e push regularmente.
-
-
 
 ## 🔐 Configuração de Segurança
 **IMPORTANTE**: Este repositório contém projetos que utilizam APIs e credenciais.
