@@ -62,7 +62,7 @@ Engenheiro de Dados com background Analytics Engineering, especializado em:
 - Macros reutilizáveis
 - Linhagem dados (lineage)
 
-📁 **Documentação:** [Airbyte-DBT-BigQuery/README.md](Airbyte-DBT-BigQuery/README.md)
+📁 **Documentação:** [Weather-Analytics/README.md](Weather-Analytics\README.md)
 
 ---
 
