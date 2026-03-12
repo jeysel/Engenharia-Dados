@@ -1,0 +1,70 @@
+services:
+  # Banco de Dados PostgreSQL
+  postgres:
+    image: postgres:16-alpine
+    container_name: ssp-sc-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-ssp_sc_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - ssp-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-user} -d ${POSTGRES_DB:-ssp_sc_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Extrator de Dados
+  extrator:
+    build:
+      context: ./extrator
+      dockerfile: Dockerfile
+    container_name: ssp-sc-extrator
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      EXTRACTION_INTERVAL: ${EXTRACTION_INTERVAL:-3600}
+    volumes:
+      - ./extrator/data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ssp-network
+    restart: "no"
+
+  # Sistema de Visualização
+  visualizacao:
+    build:
+      context: ./visualizacao
+      dockerfile: Dockerfile
+    container_name: ssp-sc-visualizacao
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      FLASK_ENV: ${FLASK_ENV:-production}
+      FLASK_DEBUG: ${FLASK_DEBUG:-False}
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ssp-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  ssp-network:
+    driver: bridge

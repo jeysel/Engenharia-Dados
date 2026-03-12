@@ -1,0 +1,34 @@
+[Unit]
+Description=SSP-SC Data Extractor Service
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=ssp-extractor
+Group=ssp-extractor
+WorkingDirectory=/opt/ssp-sc-extractor
+Environment="PYTHONUNBUFFERED=1"
+Environment="DATABASE_URL=postgresql://user:password@localhost:5432/ssp_sc_db"
+Environment="EXTRACTION_INTERVAL=3600"
+Environment="DATA_DIR=/var/lib/ssp-sc-extractor/data"
+
+ExecStart=/opt/ssp-sc-extractor/venv/bin/python /opt/ssp-sc-extractor/scheduler.py
+
+# Restart
+Restart=on-failure
+RestartSec=30
+
+# Logging
+StandardOutput=append:/var/log/ssp-sc-extractor.log
+StandardError=append:/var/log/ssp-sc-extractor-error.log
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/ssp-sc-extractor /var/log
+
+[Install]
+WantedBy=multi-user.target

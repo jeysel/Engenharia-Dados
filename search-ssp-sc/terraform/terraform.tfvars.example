@@ -1,0 +1,109 @@
+# Terraform Variables - Example Configuration
+# Copie este arquivo para terraform.tfvars e ajuste os valores
+
+# =============================================================================
+# AWS Configuration
+# =============================================================================
+
+aws_region  = "us-east-1"
+environment = "dev"  # dev, staging, prod
+project_name = "ssp-sc-pipeline"
+
+# =============================================================================
+# Database Configuration (RDS PostgreSQL)
+# =============================================================================
+
+db_username = "admin"
+# ⚠️ IMPORTANTE: Altere a senha abaixo! Nunca faça commit de senhas reais!
+db_password = "CHANGE_ME_TO_SECURE_PASSWORD"  # Mínimo 8 caracteres
+
+# Instance size
+# dev: db.t3.micro ($15/mês)
+# prod: db.t3.small ($30/mês) ou db.t3.medium ($60/mês)
+db_instance_class = "db.t3.micro"
+
+# Storage
+db_allocated_storage = 20  # GB (mínimo 20, máximo 1000)
+
+# Backup
+db_backup_retention_days = 7  # 1-35 dias
+
+# Alta disponibilidade
+enable_multi_az = false  # true para produção ($30 extra/mês)
+
+# Acesso público (apenas para dev/testes)
+db_publicly_accessible = false  # true para acessar de fora da VPC
+
+# =============================================================================
+# S3 Data Lake Configuration
+# =============================================================================
+
+s3_bucket_prefix = "ssp-sc-data-lake"  # Bucket será: prefix-env-random
+
+# Versionamento (recomendado)
+enable_versioning = true
+
+# Criptografia (obrigatório em produção)
+enable_encryption = true
+
+# Lifecycle - Mover para Glacier
+lifecycle_glacier_days = 90  # Dias até mover para Glacier
+
+# Lifecycle - Deletar arquivos antigos
+lifecycle_expiration_days = 365  # Dias até deletar (0 = nunca)
+
+# =============================================================================
+# Network Configuration
+# =============================================================================
+
+vpc_cidr = "10.0.0.0/16"
+
+# CIDR blocks permitidos para acessar RDS
+# ⚠️ SEGURANÇA: Ajuste para seu IP ou rede interna!
+# Exemplo: ["203.0.113.0/24"] para permitir apenas sua rede
+allowed_cidr_blocks = ["0.0.0.0/0"]  # ⚠️ Permite TODO mundo (apenas dev!)
+
+# =============================================================================
+# Tags (para organização e billing)
+# =============================================================================
+
+tags = {
+  Team        = "Data Engineering"
+  Purpose     = "SSP-SC Pipeline"
+  CostCenter  = "Analytics"
+  Terraform   = "true"
+  Repository  = "search-ssp-sc"
+}
+
+# =============================================================================
+# DICAS DE CONFIGURAÇÃO POR AMBIENTE
+# =============================================================================
+
+# DESENVOLVIMENTO (Dev)
+# ---------------------
+# environment = "dev"
+# db_instance_class = "db.t3.micro"
+# enable_multi_az = false
+# db_publicly_accessible = true  # Para acessar do seu computador
+# lifecycle_glacier_days = 30
+# Custo estimado: ~$15-20/mês
+
+# STAGING
+# -------
+# environment = "staging"
+# db_instance_class = "db.t3.small"
+# enable_multi_az = false
+# db_publicly_accessible = false
+# lifecycle_glacier_days = 60
+# Custo estimado: ~$30-40/mês
+
+# PRODUÇÃO (Prod)
+# ---------------
+# environment = "prod"
+# db_instance_class = "db.t3.small" ou "db.t3.medium"
+# enable_multi_az = true  # Alta disponibilidade
+# db_publicly_accessible = false  # Segurança
+# lifecycle_glacier_days = 90
+# db_backup_retention_days = 14  # Mais backups
+# allowed_cidr_blocks = ["10.0.0.0/8"]  # Apenas VPC interna
+# Custo estimado: ~$60-100/mês
