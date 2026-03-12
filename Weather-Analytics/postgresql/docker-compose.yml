@@ -1,0 +1,73 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Weather Pipeline — PostgreSQL Staging Server
+#
+# IMPORTANTE: O cluster PostgreSQL deve ser inicializado manualmente
+# antes do primeiro uso. Ver postgresql/README.md — "Setup passo a passo".
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  postgres:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PG_VERSION: "17"
+    container_name: weather_postgres
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_DB:       ${POSTGRES_DB:-weather_staging}
+      POSTGRES_USER:     ${POSTGRES_USER:-weather_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-weather_pass}
+      POSTGRES_PORT:     ${POSTGRES_PORT:-5432}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/17/main
+      - pg_logs:/var/log/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-weather_user} -d ${POSTGRES_DB:-weather_staging}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - weather_net
+
+  # Coletor: busca Open-Meteo API e grava em raw.*
+  # Suba apenas APÓS o setup manual do banco (ver README).
+  collector:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: weather_collector
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_HOST:     postgres
+      POSTGRES_DB:       ${POSTGRES_DB:-weather_staging}
+      POSTGRES_USER:     ${POSTGRES_USER:-weather_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-weather_pass}
+      POSTGRES_PORT:     "5432"
+    command: ["python3", "/opt/collector/collector.py", "--mode", "scheduled"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - weather_net
+    profiles:
+      - collector
+
+volumes:
+  pg_data:
+    name: weather_pg_data
+  pg_logs:
+    name: weather_pg_logs
+
+networks:
+  weather_net:
+    name: weather_network
+    driver: bridge

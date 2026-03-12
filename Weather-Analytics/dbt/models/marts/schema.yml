@@ -1,0 +1,192 @@
+version: 2
+
+models:
+
+  # ── mart_climate__daily_facts ──────────────────────────────────────────────
+  - name: mart_climate__daily_facts
+    description: >
+      **Tabela fato central do Data Warehouse.**
+
+      Combina dados climáticos diários com metadados geográficos das
+      localizações monitoradas. Inclui cálculos analíticos prontos para uso:
+      anomalias de temperatura e precipitação (rolling 30 dias), classificação
+      de precipitação, nível de risco UV e horas de luz solar.
+
+      Particionada por mês e clusterizada por `location_id` no BigQuery para
+      reduzir custo de queries analíticas.
+    tags: ["marts", "daily", "facts"]
+    meta:
+      layer: marts
+      owner: analytics-engineering
+      sla: "06:00 BRT"
+      upstream:
+        - stg_weather__daily
+        - seeds.locations
+
+    columns:
+      - name: date
+        description: "Data de referência da observação."
+        tests: [not_null]
+
+      - name: location_id
+        description: "Identificador único da localização."
+        tests: [not_null]
+
+      - name: city_name
+        description: "Nome da cidade."
+        tests: [not_null]
+
+      - name: state_name
+        description: "Nome do estado."
+
+      - name: country
+        description: "País."
+
+      - name: region
+        description: "Região geográfica do Brasil."
+
+      - name: year
+        description: "Ano extraído da data."
+        tests: [not_null]
+
+      - name: month
+        description: "Mês extraído da data (1–12)."
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 12
+
+      - name: year_month
+        description: "Formato YYYY-MM para agrupamentos mensais."
+
+      - name: is_weekend
+        description: "True se sábado ou domingo."
+
+      - name: temp_max_c
+        description: "Temperatura máxima do dia em °C."
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: -20
+              max_value: 60
+
+      - name: temp_min_c
+        description: "Temperatura mínima do dia em °C."
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: -30
+              max_value: 55
+
+      - name: temp_avg_c
+        description: "Temperatura média do dia em °C."
+
+      - name: temp_amplitude_c
+        description: "Amplitude térmica do dia (max - min) em °C."
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 40
+
+      - name: temp_anomaly_c
+        description: >
+          Desvio da temperatura média em relação à rolling average de
+          30 dias para a mesma localização. Positivo = mais quente que o normal.
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: -25
+              max_value: 25
+
+      - name: precipitation_mm
+        description: "Precipitação total do dia em mm."
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 500
+
+      - name: precipitation_class
+        description: "Classificação qualitativa da precipitação."
+        tests:
+          - not_null
+          - accepted_values:
+              values: [dry, light, moderate, heavy, extreme]
+
+      - name: wind_speed_max_kmh
+        description: "Velocidade máxima do vento no dia em km/h."
+
+      - name: uv_index_max
+        description: "Índice UV máximo do dia."
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 20
+
+      - name: uv_risk_level
+        description: "Classificação de risco UV (WHO)."
+        tests:
+          - accepted_values:
+              values: [low, moderate, high, very_high, extreme]
+
+      - name: daylight_hours
+        description: "Horas de luz solar (sunset - sunrise)."
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 10
+              max_value: 14
+
+      - name: _dbt_updated_at
+        description: "Timestamp da última atualização pelo dbt."
+        tests: [not_null]
+
+  # ── mart_climate__alerts ───────────────────────────────────────────────────
+  - name: mart_climate__alerts
+    description: >
+      Eventos climáticos extremos detectados por localização e data.
+      Útil para dashboards de monitoramento, notificações e relatórios
+      de anomalias climáticas.
+    tags: ["marts", "daily", "alerts"]
+    meta:
+      layer: marts
+      owner: analytics-engineering
+
+    columns:
+      - name: date
+        description: "Data do evento climático extremo."
+        tests: [not_null]
+
+      - name: location_id
+        description: "Identificador da localização."
+        tests: [not_null]
+
+      - name: alert_type
+        description: "Tipo de evento detectado."
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - extreme_heat
+                - frost
+                - heavy_rain
+                - high_winds
+                - extreme_uv
+                - heat_anomaly
+                - cold_anomaly
+                - precip_anomaly
+
+      - name: severity
+        description: "Nível de severidade do alerta."
+        tests:
+          - not_null
+          - accepted_values:
+              values: [critical, high, medium, low]
+
+      - name: temp_max_c
+        description: "Temperatura máxima no dia do alerta."
+
+      - name: precipitation_mm
+        description: "Precipitação no dia do alerta."
+
+      - name: wind_speed_max_kmh
+        description: "Velocidade máxima do vento no dia do alerta."
+
+      - name: uv_index_max
+        description: "Índice UV máximo no dia do alerta."

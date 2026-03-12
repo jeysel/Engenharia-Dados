@@ -1,0 +1,102 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Weather Pipeline — dbt
+#
+# Uso:
+#   docker compose run --rm dbt-run      # executa os modelos
+#   docker compose run --rm dbt-test     # roda todos os testes
+#   docker compose run --rm dbt-docs     # gera e serve documentação
+#   docker compose run --rm dbt-seed     # carrega seeds (locations.csv)
+#   docker compose run --rm dbt-debug    # valida conexões
+# ─────────────────────────────────────────────────────────────────────────────
+
+x-dbt-base: &dbt-base
+  build:
+    context: .
+    dockerfile: Dockerfile
+  volumes:
+    # Projeto dbt — editado localmente, refletido no container
+    - .:/dbt
+    # profiles.yml com credenciais — NUNCA commite, fica só na máquina local
+    - ${DBT_PROFILES_DIR:-~/.dbt}:/root/.dbt:ro
+    # Credencial GCP para o adaptador BigQuery
+    - ${GCP_CREDENTIALS_PATH:-~/.config/gcloud/application_default_credentials.json}:/secrets/gcp.json:ro
+  environment:
+    DBT_TARGET: ${DBT_TARGET:-dev}
+    GOOGLE_APPLICATION_CREDENTIALS: /secrets/gcp.json
+    # Variáveis injetadas no profiles.yml via env_var()
+    POSTGRES_HOST:       ${POSTGRES_HOST:-host.docker.internal}
+    POSTGRES_PORT:       ${POSTGRES_PORT:-5432}
+    POSTGRES_DB:         ${POSTGRES_DB:-weather_staging}
+    POSTGRES_USER:       ${POSTGRES_USER:-dbt_user}
+    POSTGRES_PASSWORD:   ${POSTGRES_PASSWORD:-dbt_pass_troque}
+    GCP_PROJECT_ID:      ${GCP_PROJECT_ID}
+    # dev: source = PostgreSQL | prod: source = BigQuery (dataset weather_raw)
+    DBT_SOURCE_DATABASE: ${DBT_SOURCE_DATABASE:-weather_staging}
+    DBT_SOURCE_SCHEMA:   ${DBT_SOURCE_SCHEMA:-raw}
+  networks:
+    - weather_net
+
+services:
+
+  # ── dbt debug — valida profiles e conexões ────────────────────────────────
+  dbt-debug:
+    <<: *dbt-base
+    container_name: dbt_debug
+    command: debug
+
+  # ── dbt seed — carrega arquivos CSV (seeds/locations.csv) ─────────────────
+  dbt-seed:
+    <<: *dbt-base
+    container_name: dbt_seed
+    command: seed --show
+
+  # ── dbt run — executa todos os modelos ────────────────────────────────────
+  dbt-run:
+    <<: *dbt-base
+    container_name: dbt_run
+    command: run --profiles-dir /root/.dbt
+
+  # ── dbt run staging — só a camada staging ─────────────────────────────────
+  dbt-run-staging:
+    <<: *dbt-base
+    container_name: dbt_run_staging
+    command: run --select staging
+
+  # ── dbt run marts — só os marts ───────────────────────────────────────────
+  dbt-run-marts:
+    <<: *dbt-base
+    container_name: dbt_run_marts
+    command: run --select marts
+
+  # ── dbt test — todos os testes ────────────────────────────────────────────
+  dbt-test:
+    <<: *dbt-base
+    container_name: dbt_test
+    command: test
+
+  # ── dbt test + run — pipeline completo ────────────────────────────────────
+  dbt-build:
+    <<: *dbt-base
+    container_name: dbt_build
+    command: build --profiles-dir /root/.dbt
+
+  # ── dbt docs — gera e serve no port 8080 ──────────────────────────────────
+  dbt-docs:
+    <<: *dbt-base
+    container_name: dbt_docs
+    command: docs serve --port 8080 --host 0.0.0.0
+    ports:
+      - "8080:8080"
+
+  # ── dbt docs generate — só gera, não serve ────────────────────────────────
+  dbt-docs-generate:
+    <<: *dbt-base
+    container_name: dbt_docs_generate
+    command: docs generate
+
+networks:
+  weather_net:
+    name: weather_network
+    external: true     # criada pelo container postgresql/docker-compose.yml

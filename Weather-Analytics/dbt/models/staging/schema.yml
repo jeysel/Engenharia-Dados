@@ -1,0 +1,132 @@
+version: 2
+
+models:
+
+  # ── stg_weather__hourly ────────────────────────────────────────────────────
+  - name: stg_weather__hourly
+    description: >
+      View de limpeza sobre `raw.open_meteo_hourly`. Renomeia colunas para
+      nomenclatura padrão do projeto, casteia tipos e remove registros nulos
+      em campos obrigatórios. **Não contém transformações de negócio.**
+    tags: ["staging", "hourly"]
+    meta:
+      layer: staging
+      upstream: raw.open_meteo_hourly
+
+    columns:
+      - name: location_id
+        description: "Identificador único da localização."
+        tests: [not_null]
+
+      - name: observed_at
+        description: "Timestamp da observação com timezone (America/Sao_Paulo)."
+        tests: [not_null]
+
+      - name: latitude
+        description: "Latitude da estação em graus decimais."
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: -35
+              max_value: 5
+
+      - name: longitude
+        description: "Longitude da estação em graus decimais."
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: -75
+              max_value: -30
+
+      - name: temperature_c
+        description: "Temperatura a 2m do solo em °C."
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: -20
+              max_value: 55
+
+      - name: relative_humidity_pct
+        description: "Umidade relativa em % (0–100)."
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+
+      - name: precipitation_mm
+        description: "Precipitação acumulada na hora em mm."
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 200
+
+      - name: wind_speed_kmh
+        description: "Velocidade do vento a 10m em km/h."
+
+      - name: wind_direction_deg
+        description: "Direção do vento em graus (0–360)."
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 360
+
+      - name: wmo_weather_code
+        description: >
+          Código WMO de condição climática.
+          Ver macro `wmo_code_to_label()` para decodificação.
+
+      - name: _extracted_at
+        description: "Timestamp de extração pelo Airbyte."
+        tests: [not_null]
+
+      - name: _loaded_at
+        description: "Timestamp de quando a view foi materializada pelo dbt."
+        tests: [not_null]
+
+  # ── stg_weather__daily ─────────────────────────────────────────────────────
+  - name: stg_weather__daily
+    description: >
+      View de limpeza sobre `raw.open_meteo_daily`. Calcula `temp_avg_c`
+      como média simples de máxima e mínima. Demais colunas tipadas e
+      renomeadas para o padrão do projeto.
+    tags: ["staging", "daily"]
+    meta:
+      layer: staging
+      upstream: raw.open_meteo_daily
+
+    columns:
+      - name: location_id
+        description: "Identificador único da localização."
+        tests: [not_null]
+
+      - name: date
+        description: "Data de referência."
+        tests: [not_null]
+
+      - name: temp_max_c
+        description: "Temperatura máxima do dia em °C."
+
+      - name: temp_min_c
+        description: "Temperatura mínima do dia em °C."
+
+      - name: temp_avg_c
+        description: "Temperatura média calculada como (max + min) / 2 em °C."
+
+      - name: precipitation_mm
+        description: "Precipitação total do dia em mm."
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 500
+
+      - name: uv_index_max
+        description: "Índice UV máximo."
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 20
+
+      - name: sunrise_at
+        description: "Horário do nascer do sol."
+
+      - name: sunset_at
+        description: "Horário do pôr do sol."

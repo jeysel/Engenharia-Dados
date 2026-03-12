@@ -1,0 +1,9 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# pg_hba.conf.append
+# Adicione estas linhas ao final do pg_hba.conf gerado pelo initdb.
+# Ver README.md — passo 4.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Permite conexão autenticada de qualquer IP da rede Docker (md5)
+host    all             all             0.0.0.0/0               md5
+host    all             all             ::/0                    md5

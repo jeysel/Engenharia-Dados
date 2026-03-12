@@ -1,0 +1,38 @@
+# profiles.yml
+# Salve em: ~/.dbt/profiles.yml
+# NUNCA commite este arquivo.
+
+weather_pipeline:
+  target: "{{ env_var('DBT_TARGET', 'dev') }}"
+
+  outputs:
+
+    # ── dev: lê do PostgreSQL (staging local) ───────────────────────────────
+    # As sources raw.* são lidas diretamente do PostgreSQL.
+    # As tabelas de saída (staging, marts) são escritas no PostgreSQL também.
+    dev:
+      type: postgres
+      host:     "{{ env_var('POSTGRES_HOST', 'host.docker.internal') }}"
+      port:     "{{ env_var('POSTGRES_PORT', '5432') | int }}"
+      dbname:   "{{ env_var('POSTGRES_DB', 'weather_staging') }}"
+      user:     "{{ env_var('POSTGRES_USER', 'dbt_user') }}"
+      password: "{{ env_var('POSTGRES_PASSWORD') }}"
+      schema:   dbt_dev
+      threads:  4
+      search_path: "raw,staging,intermediate,marts,seeds"
+
+    # ── prod: lê e escreve no BigQuery ───────────────────────────────────────
+    # As sources são lidas do dataset weather_raw (populado pelo Airbyte).
+    # Os modelos dbt são materializados no dataset weather_dw.
+    # Execute com: DBT_TARGET=prod docker compose run --rm dbt-build
+    prod:
+      type: bigquery
+      method: service-account
+      project:  "{{ env_var('GCP_PROJECT_ID') }}"
+      dataset:  weather_dw
+      keyfile:  /secrets/gcp.json
+      location: southamerica-east1
+      threads:  8
+      timeout_seconds: 300
+      priority: interactive
+      retries:  3

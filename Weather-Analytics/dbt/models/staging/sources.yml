@@ -1,0 +1,169 @@
+version: 2
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Sources — tabelas raw populadas pelo Airbyte
+# ─────────────────────────────────────────────────────────────────────────────
+
+sources:
+  - name: open_meteo
+    description: >
+      Dados brutos coletados pelo collector.py da API Open-Meteo e gravados
+      no PostgreSQL (schema raw). O Airbyte sincroniza essas tabelas para o
+      BigQuery (dataset weather_raw).
+      Dev (target dev): dbt le do PostgreSQL weather_staging.raw.
+      Prod (target prod): dbt le do BigQuery weather_raw populado pelo Airbyte.
+      Nao modifique estas tabelas manualmente.
+    database: "{{ env_var('DBT_SOURCE_DATABASE', 'weather_staging') }}"
+    schema: "{{ env_var('DBT_SOURCE_SCHEMA', 'raw') }}"
+    tags: ["source", "open-meteo"]
+
+    # ── Freshness ────────────────────────────────────────────────────────────
+    # Verifica com: docker compose run --rm dbt-run source freshness
+    freshness:
+      warn_after:  { count: 25, period: hour }
+      error_after: { count: 49, period: hour }
+    loaded_at_field: _extracted_at
+
+    tables:
+
+      # ── open_meteo_hourly ─────────────────────────────────────────────────
+      - name: open_meteo_hourly
+        description: >
+          Medições horárias de 9 variáveis climáticas para cada localização
+          monitorada. Populado pelo Airbyte a cada 6 horas.
+        tags: ["hourly"]
+
+        columns:
+          - name: location_id
+            description: "Identificador da localização (ex: sao_paulo)."
+            tests:
+              - not_null
+              - accepted_values:
+                  values:
+                    # Capitais e grandes centros
+                    - sao_paulo
+                    - rio_de_janeiro
+                    - brasilia
+                    - curitiba
+                    - porto_alegre
+                    - manaus
+                    - fortaleza
+                    - salvador
+                    - belo_horizonte
+                    - recife
+                    - belem
+                    - goiania
+                    - campo_grande
+                    # SC — Grande Florianópolis
+                    - florianopolis
+                    - palhoca
+                    - santo_amaro_da_imperatriz
+                    - angelina
+                    # SC — Litoral Sul
+                    - garopaba
+                    - imbituba
+                    - laguna
+                    - tubarao
+                    - criciuma
+                    - ararangua
+                    # SC — Serra / Planalto
+                    - lages
+                    - campos_novos
+                    - joaçaba
+                    # SC — Litoral Norte / Vale do Itajaí
+                    - balneario_camboriu
+                    - itajai
+                    - joinville
+                    # SC — Oeste
+                    - chapeco
+                    - sao_miguel_do_oeste
+
+          - name: timestamp
+            description: "Data e hora da medição (America/Sao_Paulo)."
+            tests:
+              - not_null
+
+          - name: temperature_2m
+            description: "Temperatura a 2m do solo em graus Celsius."
+            tests:
+              - dbt_utils.accepted_range:
+                  min_value: -20
+                  max_value: 55
+                  inclusive: true
+
+          - name: relative_humidity_2m
+            description: "Umidade relativa a 2m do solo em percentual (0-100)."
+            tests:
+              - dbt_utils.accepted_range:
+                  min_value: 0
+                  max_value: 100
+
+          - name: precipitation
+            description: "Precipitação acumulada na hora em mm."
+            tests:
+              - dbt_utils.accepted_range:
+                  min_value: 0
+                  max_value: 200
+
+          - name: wind_speed_10m
+            description: "Velocidade do vento a 10m do solo em km/h."
+            tests:
+              - dbt_utils.accepted_range:
+                  min_value: 0
+                  max_value: 300
+
+          - name: _extracted_at
+            description: "Timestamp de extração pelo Airbyte."
+            tests:
+              - not_null
+
+      # ── open_meteo_daily ──────────────────────────────────────────────────
+      - name: open_meteo_daily
+        description: >
+          Resumo diário com máximas, mínimas, precipitação total, UV e
+          horários de nascer/pôr do sol. Populado pelo Airbyte diariamente.
+        tags: ["daily"]
+
+        columns:
+          - name: location_id
+            description: "Identificador da localização."
+            tests:
+              - not_null
+
+          - name: date
+            description: "Data de referência do resumo diário."
+            tests:
+              - not_null
+
+          - name: temperature_2m_max
+            description: "Temperatura máxima do dia em °C."
+            tests:
+              - dbt_utils.accepted_range:
+                  min_value: -20
+                  max_value: 60
+
+          - name: temperature_2m_min
+            description: "Temperatura mínima do dia em °C."
+            tests:
+              - dbt_utils.accepted_range:
+                  min_value: -30
+                  max_value: 55
+
+          - name: precipitation_sum
+            description: "Precipitação total do dia em mm."
+            tests:
+              - dbt_utils.accepted_range:
+                  min_value: 0
+                  max_value: 500
+
+          - name: uv_index_max
+            description: "Índice UV máximo do dia (0–16+)."
+            tests:
+              - dbt_utils.accepted_range:
+                  min_value: 0
+                  max_value: 20
+
+          - name: _extracted_at
+            description: "Timestamp de extração pelo Airbyte."
+            tests:
+              - not_null

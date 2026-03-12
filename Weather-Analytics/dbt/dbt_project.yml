@@ -1,0 +1,115 @@
+name: weather_pipeline
+version: "1.0.0"
+config-version: 2
+
+profile: weather_pipeline
+
+# ── Caminhos ──────────────────────────────────────────────────────────────────
+model-paths:    ["models"]
+test-paths:     ["tests"]
+seed-paths:     ["seeds"]
+macro-paths:    ["macros"]
+snapshot-paths: ["snapshots"]
+docs-paths:     ["docs"]
+
+target-path:  "target"
+clean-targets: ["target", "dbt_packages"]
+
+# ── Packages ──────────────────────────────────────────────────────────────────
+# Instale com: docker compose run --rm dbt-run deps
+# (ou crie packages.yml — ver abaixo)
+
+# ── Variáveis globais ─────────────────────────────────────────────────────────
+vars:
+  # Data de início para backfill histórico
+  start_date: "2024-01-01"
+
+  # Timezone padrão das transformações
+  default_timezone: "America/Sao_Paulo"
+
+  # Janela de rolling average para cálculo de anomalias (dias)
+  anomaly_window_days: 30
+
+  # Limiares de alerta climático
+  alert_extreme_heat_threshold:  40   # °C
+  alert_frost_threshold:          0   # °C
+  alert_heavy_rain_threshold:    80   # mm/dia
+  alert_high_wind_threshold:     90   # km/h
+
+# ── Modelos ───────────────────────────────────────────────────────────────────
+models:
+  weather_pipeline:
+
+    # ── Staging: views leves sobre o schema raw ──────────────────────────────
+    staging:
+      +schema: staging
+      +materialized: view
+      +tags: ["staging", "daily"]
+      +docs:
+        show: true
+      +meta:
+        owner: "analytics-engineering"
+        layer: "staging"
+
+    # ── Intermediate: modelos efêmeros para joins complexos ──────────────────
+    intermediate:
+      +schema: intermediate
+      +materialized: ephemeral
+      +tags: ["intermediate"]
+      +docs:
+        show: false    # intermediários não aparecem na documentação pública
+
+    # ── Marts: tabelas analíticas finais ──────────────────────────────────────
+    marts:
+      +schema: marts
+      +materialized: table
+      +tags: ["marts", "daily"]
+      +docs:
+        show: true
+      +meta:
+        owner: "analytics-engineering"
+        layer: "marts"
+        sla: "06:00 BRT"    # disponível todos os dias até 6h
+
+      # Configurações específicas para BigQuery em produção
+      +on_schema_change: "sync_all_columns"
+
+      # Particionamento e clustering para reduzir custo de queries no BigQuery
+      climate:
+        +partition_by:
+          field: date
+          data_type: date
+          granularity: month
+        +cluster_by: ["location_id", "year_month"]
+        +require_partition_filter: false
+
+# ── Seeds ─────────────────────────────────────────────────────────────────────
+seeds:
+  weather_pipeline:
+    +schema: seeds
+    +column_types:
+      latitude:   numeric
+      longitude:  numeric
+      altitude_m: numeric
+
+# ── Tests ─────────────────────────────────────────────────────────────────────
+tests:
+  weather_pipeline:
+    +severity: error
+    +store_failures: true
+    +schema: dbt_test_failures   # falhas ficam neste schema para análise
+
+# ── Snapshots ─────────────────────────────────────────────────────────────────
+snapshots:
+  weather_pipeline:
+    +target_schema: snapshots
+    +strategy: check
+    +check_cols: all
+
+# ── Hooks ─────────────────────────────────────────────────────────────────────
+on-run-start:
+  - "{{ log('▶ dbt run iniciado — weather_pipeline v' ~ project.version, info=True) }}"
+  - "{{ log('   Target: ' ~ target.name ~ ' | Profile: ' ~ target.type, info=True) }}"
+
+on-run-end:
+  - "{{ log('✓ dbt run concluído', info=True) }}"
