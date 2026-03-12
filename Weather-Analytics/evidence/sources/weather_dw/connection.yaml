@@ -1,0 +1,13 @@
+# Fonte: BigQuery — target prod do dbt
+# Dataset: weather_dw_marts (gerado pelo dbt com +schema: marts)
+#
+# Variáveis de ambiente necessárias (ver .env.example):
+#   GCP_PROJECT_ID, BQ_MARTS_DATASET, GOOGLE_APPLICATION_CREDENTIALS
+#
+# Documentação: https://docs.evidence.dev/core-concepts/data-sources/#bigquery
+
+name: weather_dw
+type: bigquery
+project_id: "${GCP_PROJECT_ID}"
+dataset: "${BQ_MARTS_DATASET}"
+credentials_json_file: "${GOOGLE_APPLICATION_CREDENTIALS}"

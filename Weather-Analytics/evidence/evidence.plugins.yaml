@@ -1,0 +1,4 @@
+plugins:
+  connections:
+    "@evidence-dev/bigquery": {}
+    "@evidence-dev/postgres": {}
