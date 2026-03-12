@@ -1,4 +1,5 @@
-# Como Usar o projeto Data Warehouse.
+# Projeto: Weather Analytics Pipeline
+# Stack: Open‑Meteo API → Airbyte → PostgreSQL (staging) → dbt → BigQuery (DW)
 
 ---
 ## 🚀 Configuração Inicial
@@ -17,7 +18,7 @@
 
 ### 1. Criar Container para executar o Airbyte localmente (Maquina com Windows 11)
 
-Acessar o link: https://docs.airbyte.com/using-airbyte/getting-started/oss-quickstart?_gl=1*1uywmn1*_gcl_au*MTU0OTM4MDYyMi4xNzMyNzk5MTYx
+* Acessar o link: https://docs.airbyte.com/using-airbyte/getting-started/oss-quickstart?_gl=1*1uywmn1*_gcl_au*MTU0OTM4MDYyMi4xNzMyNzk5MTYx
 
 * Executar os passos em ordem:
 
