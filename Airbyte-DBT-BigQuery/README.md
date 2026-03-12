@@ -19,7 +19,9 @@
 
 Acessar o link: https://docs.airbyte.com/using-airbyte/getting-started/oss-quickstart?_gl=1*1uywmn1*_gcl_au*MTU0OTM4MDYyMi4xNzMyNzk5MTYx
 
-Executar os passos em ordem:
+* Executar os passos em ordem:
+
+```
 1- "Overview" -> Install ABCTL
 2- Overview/Install abctl Passsos do sistema operacional (Aba Windows)
 3- Download ABCTL, opção: "Download windows"
@@ -36,6 +38,8 @@ Executar os passos em ordem:
 14- Será gerado uma senha, copiar a senha gerada, exemplo: zJomffmttWEF5FL0afTGAs59wQdangpu
 15- Acessar o endereço: http://localhost:9000/ e informar o email e a senha gerada
 16- Para desinstalar o airbyte local, Abra PowerShell de digite: abctl local uninstall --persisted 
+
+```
 
 
 
