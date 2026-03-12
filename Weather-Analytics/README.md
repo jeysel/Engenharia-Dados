@@ -1,5 +1,15 @@
 # Projeto: Weather Analytics Pipeline
-# Stack: Open‑Meteo API → Airbyte → PostgreSQL (staging) → dbt → BigQuery (DW)
+# Open-Meteo API → collector.py (PostgreSQL) → Airbyte → BigQuery → dbt → BigQuery DW
+
+## Estrutura
+
+```
+Weather-Analytics/
+├── postgresql/     # Container Ubuntu 24.04 + PostgreSQL 17 + app coletor
+├── airbyte/        # Guia de configuração: Source PostgreSQL → Destination BigQuery
+├── dbt/            # Transformações: staging → marts (dev: Postgres, prod: BigQuery)
+└── docs/           # Arquitetura e decisões
+```
 
 ---
 ## 🚀 Configuração Inicial
@@ -7,16 +17,13 @@
 ### Pré-requisitos
 
 - Docker Desktop instalado e rodando
-- AirByte + DBT + BigQuery configurados
 - Docker Compose disponível
-- ~2GB de espaço livre em disco
-- Conexão com internet para download de imagens e PDFs
+- ~8GB de espaço livre em disco
+- Conexão com internet para download de imagens e integração com APIs
 
 ---
 
-## 🐳 Criação dos Containers Docker
-
-### 1. Criar Container para executar o Airbyte localmente (Maquina com Windows 11)
+## 🐳 Criar Container Docker para executar o Airbyte localmente (Maquina com Windows 11)
 
 * Acessar o link: https://docs.airbyte.com/using-airbyte/getting-started/oss-quickstart?_gl=1*1uywmn1*_gcl_au*MTU0OTM4MDYyMi4xNzMyNzk5MTYx
 
@@ -42,8 +49,42 @@
 
 ```
 
+## Weather Analytics Pipeline - Arquitetura em camadas
+
+| Camada | Tecnologia | O que faz |
+|--------|-----------|-----------|
+| Coleta | `collector.py` (Python no container) | Busca API Open-Meteo → grava em `raw.*` |
+| Staging | PostgreSQL 17 | Armazena dados raw e serve como Source para o Airbyte |
+| Ingest | Airbyte (conector nativo PostgreSQL → BigQuery) | Replica `raw.*` para BigQuery `weather_raw` |
+| Transform | dbt | Lê `weather_raw` (prod) ou `raw` (dev) → materializa marts |
+| Warehouse | BigQuery | Dataset `weather_dw` com tabelas analíticas finais |
+
+## Pré-requisitos
+
+- Docker + Docker Compose
+- Airbyte já instalado e rodando em `http://localhost:9000`
+- Conta GCP com BigQuery e um Service Account com roles:
+  `BigQuery Data Editor` + `BigQuery Job User`
+
+## Ordem de execução
+
+```bash
+# 1. Subir e configurar o PostgreSQL (ver postgresql/README.md)
+cd postgresql && docker compose up -d postgres
+# Siga o guia: Weather-Analytics\postgresql\README.md
+
+# 2. Configurar o Airbyte (ver airbyte/README.md)
+# Acesse http://localhost:9000 e siga o guia: Weather-Analytics\airbyte\README.md
+
+# 3. Executar o dbt
+# Siga o guia: Weather-Analytics\dbt\README.md
+cd ../dbt
+docker compose run --rm dbt-seed
+docker compose run --rm dbt-build            # dev (PostgreSQL)
+DBT_TARGET=prod docker compose run --rm dbt-build  # prod (BigQuery)
 
 
+```
 
 
 
