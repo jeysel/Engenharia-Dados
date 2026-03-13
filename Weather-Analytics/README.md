@@ -42,7 +42,7 @@ Weather-Analytics/
 
 ---
 
-## 🐳 Criar Container Docker para executar o Airbyte localmente (Maquina com Windows 11)
+## 🐳 Configurar Container Docker para executar Airbyte localmente (Maquina com Windows 11)
 
 * Acessar o link: https://docs.airbyte.com/using-airbyte/getting-started/oss-quickstart?_gl=1*1uywmn1*_gcl_au*MTU0OTM4MDYyMi4xNzMyNzk5MTYx
 
@@ -68,24 +68,24 @@ Weather-Analytics/
 
 ```
 
-## 🐳 Criar Container Docker para executar o PostgreSQL,  e a integração com API Open-Meteo e Google BigQuery
+## 🐳 Configurar Container Docker para executar: PostgreSQL, integração com API Open-Meteo e Google BigQuery
 
 
-* 1. Subir e configurar seguindo os passos disponíveis em: postgresql/README.md
+* Subir e configurar seguindo os passos disponíveis em: postgresql/README.md
 
-* 2. Primeira coleta - Pré requisito: Configuração concluída conforme: postgresql/README.md
+* Primeira coleta | Pré requisito: Configuração concluída conforme: postgresql/README.md
 
 ```
 docker exec weather_postgres python3 /opt/collector/collector.py --mode once
 ```
 
-* 3. Verificar dados
+* Verificar dados
 
 ```
 docker exec weather_postgres psql -U weather_user -d weather_staging -c  "SELECT location_id, COUNT(*) FROM raw.open_meteo_daily GROUP BY 1 ORDER BY 1;"
 ```
 
-* 4. Coletor agendado
+* Coletor agendado
 
 ```
 docker compose --profile collector up -d collector
@@ -96,26 +96,22 @@ Roda automaticamente às 00:30, 06:30, 12:30 e 18:30 (horário de Brasília).
 ```
 
 
+## Configurar o Airbyte (ver airbyte/README.md)
+
+* Acessar http://localhost:9000 e siga o guia: Weather-Analytics\airbyte\README.md
 
 
-### Configurar o Airbyte (ver airbyte/README.md)
-```
-# 2. Configurar o Airbyte (ver airbyte/README.md)
-# Acesse http://localhost:9000 e siga o guia: Weather-Analytics\airbyte\README.md
-```
+##  Configurar o e Executar o dbt
 
-
-# 3. Configurar o e Executar o dbt
-```
-# Siga o guia: Weather-Analytics\dbt\README.md
+* Siga o guia: Weather-Analytics\dbt\README.md
 cd ../dbt
 docker compose run --rm dbt-seed
-docker compose run --rm dbt-build            # dev (PostgreSQL)
+docker compose run --rm dbt-build                  # dev (PostgreSQL)
 DBT_TARGET=prod docker compose run --rm dbt-build  # prod (BigQuery)
-```
 
 
-# 4. Visualizar os dashboards (ver evidence/README.md)
+
+## Visualizar os dashboards (ver evidence/README.md)
 
 ```
 cd ../evidence

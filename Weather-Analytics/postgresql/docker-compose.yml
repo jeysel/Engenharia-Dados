@@ -1,14 +1,55 @@
-version: "3.9"
+name: weather-analytics
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Weather Pipeline — PostgreSQL Staging Server
+# Weather Pipeline — PostgreSQL + dbt
 #
-# IMPORTANTE: O cluster PostgreSQL deve ser inicializado manualmente
-# antes do primeiro uso. Ver postgresql/README.md — "Setup passo a passo".
+# Serviços permanentes (sobem com `docker compose up`):
+#   postgres  — banco de staging, inicializado automaticamente pelo entrypoint
+#   collector — coletor Open-Meteo (profile: collector)
+#
+# Serviços dbt (execute com `docker compose run --rm <serviço>`):
+#   dbt-debug        — valida conexões e profiles
+#   dbt-seed         — carrega seeds/locations.csv
+#   dbt-run          — executa todos os modelos
+#   dbt-run-staging  — só a camada staging
+#   dbt-run-marts    — só os marts
+#   dbt-test         — todos os testes
+#   dbt-build        — run + test completo
+#   dbt-docs         — gera e serve docs em http://localhost:8080
+#   dbt-docs-generate — só gera, não serve
 # ─────────────────────────────────────────────────────────────────────────────
+
+# ── Bloco base reutilizado por todos os serviços dbt ──────────────────────────
+x-dbt-base: &dbt-base
+  build:
+    context: ../dbt
+    dockerfile: Dockerfile
+  volumes:
+    - ../dbt:/dbt                                          # projeto dbt (live reload)
+    - ${DBT_PROFILES_DIR:-~/.dbt}:/root/.dbt:ro           # profiles.yml local
+    - ./secrets/gcp-service-account.json:/secrets/gcp.json:ro  # credencial GCP
+  environment:
+    DBT_TARGET:              ${DBT_TARGET:-dev}
+    GOOGLE_APPLICATION_CREDENTIALS: /secrets/gcp.json
+    POSTGRES_HOST:           postgres
+    POSTGRES_PORT:           ${POSTGRES_PORT:-5432}
+    POSTGRES_DB:             ${POSTGRES_DB:-weather_staging}
+    POSTGRES_USER:           ${WEATHER_DBT_USER:-dbt_user}
+    POSTGRES_PASSWORD:       ${WEATHER_DBT_PASSWORD:-dbt_pass_troque}
+    GCP_PROJECT_ID:          ${GCP_PROJECT_ID}
+    DBT_SOURCE_DATABASE:     ${DBT_SOURCE_DATABASE:-weather_staging}
+    DBT_SOURCE_SCHEMA:       ${DBT_SOURCE_SCHEMA:-raw}
+  depends_on:
+    postgres:
+      condition: service_healthy
+  networks:
+    - weather_net
+  profiles:
+    - dbt
 
 services:
 
+  # ── PostgreSQL ─────────────────────────────────────────────────────────────
   postgres:
     build:
       context: .
@@ -33,12 +74,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
+      start_period: 30s
     networks:
       - weather_net
 
-  # Coletor: busca Open-Meteo API e grava em raw.*
-  # Suba apenas APÓS o setup manual do banco (ver README).
+  # ── Coletor Open-Meteo ─────────────────────────────────────────────────────
   collector:
     build:
       context: .
@@ -47,11 +87,17 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      POSTGRES_HOST:     postgres
-      POSTGRES_DB:       ${POSTGRES_DB:-weather_staging}
-      POSTGRES_USER:     ${POSTGRES_USER:-weather_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-weather_pass}
-      POSTGRES_PORT:     "5432"
+      POSTGRES_HOST:        postgres
+      POSTGRES_DB:          ${POSTGRES_DB:-weather_staging}
+      POSTGRES_USER:        ${POSTGRES_USER:-weather_user}
+      POSTGRES_PASSWORD:    ${POSTGRES_PASSWORD:-weather_pass}
+      POSTGRES_PORT:        "5432"
+      GCP_PROJECT_ID:       ${GCP_PROJECT_ID}
+      GCP_CREDENTIALS_PATH: /run/secrets/gcp-service-account.json
+      BIGQUERY_DATASET:     ${BIGQUERY_DATASET:-weather_dw}
+      BIGQUERY_LOCATION:    ${BIGQUERY_LOCATION:-southamerica-east1}
+    volumes:
+      - ./secrets:/run/secrets:ro
     command: ["python3", "/opt/collector/collector.py", "--mode", "scheduled"]
     depends_on:
       postgres:
@@ -60,6 +106,62 @@ services:
       - weather_net
     profiles:
       - collector
+
+  # ── dbt: valida conexões e profiles ───────────────────────────────────────
+  dbt-debug:
+    <<: *dbt-base
+    container_name: weather_dbt_debug
+    command: debug
+
+  # ── dbt: carrega seeds/locations.csv ──────────────────────────────────────
+  dbt-seed:
+    <<: *dbt-base
+    container_name: weather_dbt_seed
+    command: seed --show
+
+  # ── dbt: executa todos os modelos ─────────────────────────────────────────
+  dbt-run:
+    <<: *dbt-base
+    container_name: weather_dbt_run
+    command: run --profiles-dir /root/.dbt
+
+  # ── dbt: só a camada staging ──────────────────────────────────────────────
+  dbt-run-staging:
+    <<: *dbt-base
+    container_name: weather_dbt_run_staging
+    command: run --select staging
+
+  # ── dbt: só os marts ──────────────────────────────────────────────────────
+  dbt-run-marts:
+    <<: *dbt-base
+    container_name: weather_dbt_run_marts
+    command: run --select marts
+
+  # ── dbt: todos os testes ──────────────────────────────────────────────────
+  dbt-test:
+    <<: *dbt-base
+    container_name: weather_dbt_test
+    command: test
+
+  # ── dbt: run + test completo ──────────────────────────────────────────────
+  dbt-build:
+    <<: *dbt-base
+    container_name: weather_dbt_build
+    command: build --profiles-dir /root/.dbt
+
+  # ── dbt: gera e serve docs em http://localhost:8080 ───────────────────────
+  dbt-docs:
+    <<: *dbt-base
+    container_name: weather_dbt_docs
+    command: docs serve --port 8080 --host 0.0.0.0
+    ports:
+      - "8080:8080"
+
+  # ── dbt: só gera docs, não serve ──────────────────────────────────────────
+  dbt-docs-generate:
+    <<: *dbt-base
+    container_name: weather_dbt_docs_generate
+    command: docs generate
 
 volumes:
   pg_data:

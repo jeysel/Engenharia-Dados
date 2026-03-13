@@ -1,14 +1,15 @@
 # dbt — Transformações e Data Warehouse
 
-Projeto dbt com Docker para execução isolada. Conecta no PostgreSQL (dev)
-e no BigQuery (prod) via profiles configurados localmente.
+Projeto dbt para transformação dos dados coletados da Open-Meteo API.
+Conecta no PostgreSQL (dev) e no BigQuery (prod) via profiles configurados localmente.
+
+> **Os containers dbt fazem parte do agrupador `weather-analytics`.**
+> Todos os comandos são executados a partir da pasta `postgresql/`.
 
 ## Estrutura
 
 ```
 dbt/
-├── Dockerfile                  # Imagem com dbt-postgres + dbt-bigquery
-├── docker-compose.yml          # Serviços para cada comando dbt
 ├── dbt_project.yml             # Configuração central + variáveis + testes
 ├── packages.yml                # dbt_utils, dbt_expectations, audit_helper
 ├── profiles.yml.example        # Template para ~/.dbt/profiles.yml
@@ -32,54 +33,65 @@ dbt/
 ├── macros/
 │   └── weather_utils.sql       # wmo_code_to_label, beaufort, celsius_to_f
 └── seeds/
-    └── locations.csv           # 15 cidades brasileiras
+    └── locations.csv           # cidades brasileiras monitoradas
 ```
 
 ## Setup inicial
 
-```bash
-# 1. Configure o profiles.yml
-cp profiles.yml.example ~/.dbt/profiles.yml
-# Edite com suas credenciais de Postgres e GCP
-
-# 2. Build da imagem dbt
-docker compose build
-
-# 3. Teste a conexão
-docker compose run --rm dbt-debug
-
-# 4. Instale os packages
-docker compose run --rm dbt-run deps
-
-# 5. Carregue os seeds
-docker compose run --rm dbt-seed
+```powershell
+# 1. Configure o profiles.yml (Windows PowerShell)
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.dbt"
+Copy-Item "C:\Dev\Engenharia-Dados\Weather-Analytics\dbt\profiles.yml.example" `
+          "$env:USERPROFILE\.dbt\profiles.yml"
 ```
+
+> O build e a subida dos containers e feita a partir da pasta `postgresql/`.
+> Ver `postgresql/README.md`.
 
 ## Executando o pipeline
 
+Todos os comandos abaixo devem ser executados dentro da pasta `postgresql/`:
+
 ```bash
+cd C:\Dev\Engenharia-Dados\Weather-Analytics\postgresql
+
+# Validar conexao com o banco
+docker compose run --rm dbt-debug
+
+# Carregar seeds (locations.csv)
+docker compose run --rm dbt-seed
+
 # Pipeline completo (run + test)
 docker compose run --rm dbt-build
 
-# Só os modelos
+# So os modelos
 docker compose run --rm dbt-run
 
-# Só os testes
+# So os testes
 docker compose run --rm dbt-test
 
 # Camada por camada
 docker compose run --rm dbt-run-staging
 docker compose run --rm dbt-run-marts
-
-# Documentação local (http://localhost:8080)
-docker compose run --rm dbt-docs-generate
-docker compose up dbt-docs
 ```
 
-## Executar em produção (BigQuery)
+## Documentacao (http://localhost:8080)
 
 ```bash
-# Sobrescreve o target para prod
+cd C:\Dev\Engenharia-Dados\Weather-Analytics\postgresql
+
+# Gera a documentacao
+docker compose run --rm dbt-docs-generate
+
+# Serve a documentacao (mante rodando -- acesse http://localhost:8080)
+docker compose run --rm --service-ports dbt-docs
+```
+
+## Executar em producao (BigQuery)
+
+```bash
+cd C:\Dev\Engenharia-Dados\Weather-Analytics\postgresql
+
 DBT_TARGET=prod docker compose run --rm dbt-build
 ```
 
@@ -102,8 +114,8 @@ DBT_TARGET=prod docker compose run --rm dbt-build
 
 | Arquivo | O que verifica |
 |---------|---------------|
-| `test_temp_min_less_than_max` | temp_min nunca > temp_max |
-| `test_no_date_gaps_per_location` | sem dias faltando (últimos 30 dias) |
+| `test_temp_min_less_than_max` | temp_min nunca maior que temp_max |
+| `test_no_date_gaps_per_location` | sem dias faltando (ultimos 30 dias) |
 | `test_unique_daily_facts_pk` | unicidade de location_id + date |
 | `test_alerts_have_valid_location` | alertas com cidade existente no seed |
 | `test_raw_data_freshness` | todos os locais com dados < 25h |
@@ -111,11 +123,11 @@ DBT_TARGET=prod docker compose run --rm dbt-build
 ## Lineage
 
 ```
-raw.open_meteo_hourly  ──► stg_weather__hourly
-                                   │
-raw.open_meteo_daily   ──► stg_weather__daily ──► mart_climate__daily_facts
-                                                          │
-seeds.locations        ───────────────────────────────────┘
-                                                          │
+raw.open_meteo_hourly  --> stg_weather__hourly
+                                   |
+raw.open_meteo_daily   --> stg_weather__daily --> mart_climate__daily_facts
+                                                          |
+seeds.locations        -----------------------------------+
+                                                          |
                                               mart_climate__alerts
 ```

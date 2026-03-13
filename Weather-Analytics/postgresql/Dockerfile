@@ -76,16 +76,15 @@ ENV PG_VERSION=${PG_VERSION} \
     POSTGRES_PASSWORD=weather_pass \
     POSTGRES_PORT=5432
 
-# ── Copia o app coletor e scripts SQL ────────────────────────────────────────
-COPY collector/ /opt/collector/
-COPY init/      /opt/init/
-COPY config/    /opt/config/
+# ── Copia o app coletor, scripts SQL e entrypoint ────────────────────────────
+COPY collector/    /opt/collector/
+COPY init/         /opt/init/
+COPY config/       /opt/config/
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 EXPOSE 5432
 
-VOLUME ["/var/lib/postgresql/${PG_VERSION}/main", "/var/log/postgresql"]
+VOLUME ["/var/lib/postgresql/17/main", "/var/log/postgresql"]
 
-# Inicia o PostgreSQL. O cluster deve ter sido criado manualmente (ver README).
-CMD ["gosu", "postgres", \
-     "/usr/lib/postgresql/17/bin/postgres", \
-     "-D", "/var/lib/postgresql/17/main"]
+ENTRYPOINT ["/entrypoint.sh"]

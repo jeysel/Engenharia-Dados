@@ -1,17 +1,24 @@
-# PostgreSQL — Staging Server
+# PostgreSQL + dbt — Weather Pipeline
 
-Container Ubuntu 24.04 + PostgreSQL 17 com duas responsabilidades:
+Container Ubuntu 24.04 + PostgreSQL 17. Centraliza todos os servicos do pipeline:
 
-1. **Staging area** — o app `collector/` busca a API Open-Meteo e grava em `raw.*`
-2. **Source do Airbyte** — o Airbyte lê `raw.*` e envia ao BigQuery (conector nativo PostgreSQL → BigQuery)
+- **postgres** — banco de staging; o `collector/` busca a API Open-Meteo e grava em `raw.*`
+- **collector** — coletor agendado (profile: `collector`)
+- **dbt-*** — servicos de transformacao (run, test, seed, docs etc.)
+
+O cluster PostgreSQL é inicializado automaticamente na primeira execucao
+(`initdb` + criacao de usuario/banco + scripts SQL via `entrypoint.sh`).
 
 ## Estrutura
 
 ```
 postgresql/
 ├── Dockerfile
-├── docker-compose.yml
+├── entrypoint.sh               # Inicializa o cluster na 1a execucao
+├── docker-compose.yml          # Todos os servicos: postgres + collector + dbt
 ├── .env.example
+├── secrets/                    # Credenciais GCP (ignorado pelo git)
+│   └── gcp-service-account.json
 ├── config/
 │   ├── postgresql.conf.append
 │   └── pg_hba.conf.append
@@ -27,99 +34,75 @@ postgresql/
 
 ## Setup passo a passo
 
-### Passo 1 — Variáveis de ambiente
+### Passo 1 — Variaveis de ambiente
 
 ```bash
+cd C:\Dev\Engenharia-Dados\Weather-Analytics\postgresql
 cp .env.example .env
-# Edite .env: POSTGRES_PASSWORD e GCP_PROJECT_ID
 ```
 
-### Passo 2 — Build e subir o container
+Edite o `.env` com suas credenciais de PostgreSQL, dbt e GCP.
+
+### Passo 2 — Credencial GCP
+
+1. Acesse [console.cloud.google.com](https://console.cloud.google.com)
+2. IAM e Admin -> Service Accounts -> Create Service Account
+3. Papel sugerido: Proprietario
+4. Aba Chaves -> Add Key -> Create new key -> JSON -> salve como:
+   `postgresql\secrets\gcp-service-account.json` (pasta: /postgresql/screts)
+5. Informe o ID do projeto no `.env`: `GCP_PROJECT_ID=seu-projeto-gcp`
+
+### Passo 3 — Configurar o dbt (profiles.yml)
+
+```powershell
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.dbt"
+Copy-Item "C:\Dev\Engenharia-Dados\Weather-Analytics\dbt\profiles.yml.example" `
+          "$env:USERPROFILE\.dbt\profiles.yml"
+```
+
+### Passo 4 — Build e subir os containers
 
 ```bash
+cd C:\Dev\Engenharia-Dados\Weather-Analytics\postgresql
+
+# Constroi as imagens (postgres + dbt)
 docker compose build
+
+# Sobe o banco (inicializa cluster automaticamente na 1a vez)
 docker compose up -d postgres
+
+# Sobe o coletor
+docker compose --profile collector up -d collector
 ```
 
-### Passo 3 — Inicializar o cluster PostgreSQL
+### Passo 5 — Executar o dbt
 
 ```bash
-docker exec -it -u postgres weather_postgres \
-  /usr/lib/postgresql/17/bin/initdb \
-  --pgdata=/var/lib/postgresql/17/main \
-  --auth-local=md5 \
-  --auth-host=md5 \
-  --encoding=UTF8 \
-  --locale=pt_BR.UTF-8
+# Validar conexao
+docker compose run --rm dbt-debug
+
+# Carregar seeds (locations.csv)
+docker compose run --rm dbt-seed
+
+# Executar modelos
+docker compose run --rm dbt-run
+
+# Validar dados
+docker compose run --rm dbt-test
 ```
 
-### Passo 4 — Aplicar configurações de rede e performance
+---
+
+## Documentacao dbt (http://localhost:8080)
 
 ```bash
-# postgresql.conf
-docker exec weather_postgres bash -c \
-  "cat /opt/config/postgresql.conf.append >> /var/lib/postgresql/17/main/postgresql.conf"
-
-# pg_hba.conf
-docker exec weather_postgres bash -c \
-  "cat /opt/config/pg_hba.conf.append >> /var/lib/postgresql/17/main/pg_hba.conf"
+docker compose run --rm dbt-docs-generate
+docker compose run --rm --service-ports dbt-docs
 ```
 
-### Passo 5 — Reiniciar para aplicar configurações
+---
 
-```bash
-docker compose restart postgres
-docker exec weather_postgres pg_isready -U postgres
-```
-
-### Passo 6 — Criar banco de dados
-
-```bash
-docker exec -it -u postgres weather_postgres \
-  /usr/lib/postgresql/17/bin/psql -c \
-  "CREATE DATABASE weather_staging ENCODING 'UTF8' LC_COLLATE 'pt_BR.UTF-8' LC_CTYPE 'pt_BR.UTF-8' TEMPLATE template0;"
-
-docker exec -it -u postgres weather_postgres \
-  /usr/lib/postgresql/17/bin/psql -c \
-  "ALTER USER postgres PASSWORD 'SUA_SENHA_AQUI';"
-```
-
-### Passo 7 — Executar scripts SQL
-
-```bash
-docker exec -it -u postgres weather_postgres \
-  /usr/lib/postgresql/17/bin/psql -d weather_staging -f /opt/init/01_schemas.sql
-
-docker exec -it -u postgres weather_postgres \
-  /usr/lib/postgresql/17/bin/psql -d weather_staging -f /opt/init/02_raw_tables.sql
-```
-
-### Passo 8 — Trocar senhas dos usuários de aplicação
-
-> Estes usuários são criados pelo 01_schemas.sql com senhas placeholder.
-
-```bash
-docker exec -it -u postgres weather_postgres \
-  /usr/lib/postgresql/17/bin/psql -d weather_staging -c \
-  "ALTER USER airbyte_user PASSWORD 'SUA_SENHA_AIRBYTE';"
-
-docker exec -it -u postgres weather_postgres \
-  /usr/lib/postgresql/17/bin/psql -d weather_staging -c \
-  "ALTER USER dbt_user PASSWORD 'SUA_SENHA_DBT';"
-```
-
-### Passo 9 — Verificar schemas
-
-```bash
-docker exec -it weather_postgres \
-  psql -U weather_user -d weather_staging -c "\dn"
-```
-
-Saída esperada: `raw`, `staging`, `intermediate`, `marts`, `seeds`.
-
-
-
-## Strings de conexão (para o Airbyte)
+## Strings de conexao (para o Airbyte)
 
 | Campo    | Valor                                                        |
 |----------|--------------------------------------------------------------|
@@ -127,12 +110,12 @@ Saída esperada: `raw`, `staging`, `intermediate`, `marts`, `seeds`.
 | Port     | `5432`                                                       |
 | Database | `weather_staging`                                            |
 | Username | `airbyte_user`                                               |
-| Password | senha definida no passo 8                                    |
+| Password | senha definida em `01_schemas.sql` (alterar apos setup)      |
 | Schema   | `raw`                                                        |
 
 ---
 
-## Comandos úteis
+## Comandos uteis
 
 ```bash
 # Acessar o psql
@@ -144,6 +127,6 @@ docker exec weather_postgres tail -f /var/log/postgresql/postgresql-$(date +%Y-%
 # Parar tudo
 docker compose --profile collector down
 
-# Remover volumes — APAGA TODOS OS DADOS
+# Remover volumes -- APAGA TODOS OS DADOS
 docker compose down -v
 ```
