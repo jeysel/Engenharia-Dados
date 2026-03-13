@@ -96,7 +96,7 @@ docker compose run --rm dbt-seed
 # 4. Executar modelos
 docker compose run --rm dbt-run
 
-# 5. Validar dados
+# 5. Validar dados - Testes de qualidade dos dados
 docker compose run --rm dbt-test
 ```
 

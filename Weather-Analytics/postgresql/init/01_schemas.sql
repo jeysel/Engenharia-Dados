@@ -47,6 +47,9 @@ CREATE SCHEMA IF NOT EXISTS marts;
 -- seeds: tabelas de referência carregadas pelo dbt seed
 CREATE SCHEMA IF NOT EXISTS seeds;
 
+-- dbt_test_failures: armazena registros que falharam nos testes dbt
+CREATE SCHEMA IF NOT EXISTS dbt_test_failures;
+
 -- ── Permissões por schema ─────────────────────────────────────────────────────
 
 -- raw: collector/Airbyte escrevem, dbt lê
@@ -62,11 +65,12 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA raw
 ALTER DEFAULT PRIVILEGES IN SCHEMA raw
     GRANT SELECT ON TABLES TO weather_dbt;
 
--- staging, intermediate, marts, seeds: dbt é dono
-GRANT USAGE, CREATE ON SCHEMA staging    TO weather_dbt;
-GRANT USAGE, CREATE ON SCHEMA intermediate TO weather_dbt;
-GRANT USAGE, CREATE ON SCHEMA marts     TO weather_dbt;
-GRANT USAGE, CREATE ON SCHEMA seeds     TO weather_dbt;
+-- staging, intermediate, marts, seeds, dbt_test_failures: dbt é dono
+GRANT USAGE, CREATE ON SCHEMA staging          TO weather_dbt;
+GRANT USAGE, CREATE ON SCHEMA intermediate     TO weather_dbt;
+GRANT USAGE, CREATE ON SCHEMA marts           TO weather_dbt;
+GRANT USAGE, CREATE ON SCHEMA seeds           TO weather_dbt;
+GRANT USAGE, CREATE ON SCHEMA dbt_test_failures TO weather_dbt;
 
 -- readonly acessa staging e marts
 GRANT USAGE ON SCHEMA staging TO weather_readonly;
