@@ -73,6 +73,9 @@ docker compose up -d postgres
 
 # Sobe o coletor
 docker compose --profile collector up -d collector
+
+# Configuração e uso do coletor
+postgresql\collector\README.md
 ```
 
 ### Passo 5 — Executar o dbt

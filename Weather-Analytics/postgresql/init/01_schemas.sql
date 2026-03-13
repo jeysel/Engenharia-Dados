@@ -49,10 +49,13 @@ CREATE SCHEMA IF NOT EXISTS seeds;
 
 -- ── Permissões por schema ─────────────────────────────────────────────────────
 
--- raw: Airbyte escreve, dbt lê
+-- raw: collector/Airbyte escrevem, dbt lê
 GRANT USAGE ON SCHEMA raw TO weather_writer, weather_dbt;
 GRANT CREATE ON SCHEMA raw TO weather_writer;
+GRANT INSERT, UPDATE ON ALL TABLES IN SCHEMA raw TO weather_writer;
 GRANT SELECT ON ALL TABLES IN SCHEMA raw TO weather_dbt;
+ALTER DEFAULT PRIVILEGES IN SCHEMA raw
+    GRANT INSERT, UPDATE ON TABLES TO weather_writer;
 ALTER DEFAULT PRIVILEGES IN SCHEMA raw
     GRANT SELECT ON TABLES TO weather_dbt;
 
@@ -73,6 +76,15 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA marts
     GRANT SELECT ON TABLES TO weather_readonly;
 
 -- ── Usuários de aplicação ─────────────────────────────────────────────────────
+
+-- Usuário principal da aplicação (collector) — criado pelo entrypoint.sh
+-- Recebe weather_writer para gravar em raw.*
+DO $$
+BEGIN
+    IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'weather_user') THEN
+        GRANT weather_writer TO weather_user;
+    END IF;
+END $$;
 
 -- Usuário do Airbyte
 DO $$

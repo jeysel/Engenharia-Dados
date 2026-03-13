@@ -27,6 +27,13 @@ Airbyte (Source: PostgreSQL → Destination: BigQuery)
 ## Uso
 
 ```bash
+
+# Adiciona permissão ao usuário weather_user
+docker exec -it weather_postgres psql -U postgres -d weather_staging -c "GRANT weather_writer TO weather_user;"
+
+docker exec -it weather_postgres psql -U postgres -d weather_staging -c "GRANT INSERT, UPDATE ON raw.open_meteo_hourly, raw.open_meteo_daily TO weather_writer;"
+
+
 # Executa uma vez (últimos 7 dias)
 docker exec weather_postgres python3 /opt/collector/collector.py --mode once
 
