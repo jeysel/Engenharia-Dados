@@ -1,6 +1,6 @@
 # Projeto: Weather Analytics Pipeline
 # Open-Meteo API → collector.py (PostgreSQL) → Airbyte → BigQuery → dbt → BigQuery DW
-
+teste
 ## Estrutura
 
 ```
