@@ -50,21 +50,6 @@ DAILY_VARS = (
 )
 
 LOCATIONS = [
-    # ── Capitais e grandes centros ────────────────────────────────────────────
-    {"id": "sao_paulo",                   "lat": -23.5505, "lon": -46.6333},
-    {"id": "rio_de_janeiro",              "lat": -22.9068, "lon": -43.1729},
-    {"id": "brasilia",                    "lat": -15.7975, "lon": -47.8919},
-    {"id": "curitiba",                    "lat": -25.4284, "lon": -49.2733},
-    {"id": "porto_alegre",                "lat": -30.0346, "lon": -51.2177},
-    {"id": "manaus",                      "lat":  -3.1190, "lon": -60.0217},
-    {"id": "fortaleza",                   "lat":  -3.7172, "lon": -38.5433},
-    {"id": "salvador",                    "lat": -12.9722, "lon": -38.5014},
-    {"id": "belo_horizonte",              "lat": -19.9167, "lon": -43.9345},
-    {"id": "recife",                      "lat":  -8.0539, "lon": -34.8811},
-    {"id": "belem",                       "lat":  -1.4558, "lon": -48.5044},
-    {"id": "goiania",                     "lat": -16.6869, "lon": -49.2648},
-    {"id": "campo_grande",                "lat": -20.4428, "lon": -54.6460},
-
     # ── Santa Catarina — Grande Florianópolis ─────────────────────────────────
     {"id": "florianopolis",               "lat": -27.5954, "lon": -48.5480},
     {"id": "palhoca",                     "lat": -27.6444, "lon": -48.6694},

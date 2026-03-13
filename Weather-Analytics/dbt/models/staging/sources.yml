@@ -27,33 +27,20 @@ sources:
     tables:
 
       # ── open_meteo_hourly ─────────────────────────────────────────────────
-      - name: open_meteo_hourly
+      - name: hourly
+        identifier: open_meteo_hourly
         description: >
           Medições horárias de 9 variáveis climáticas para cada localização
-          monitorada. Populado pelo Airbyte a cada 6 horas.
+          monitorada. Populado pelo collector a cada 6 horas.
         tags: ["hourly"]
 
         columns:
           - name: location_id
-            description: "Identificador da localização (ex: sao_paulo)."
+            description: "Identificador da localização (ex: florianopolis)."
             tests:
               - not_null
               - accepted_values:
                   values:
-                    # Capitais e grandes centros
-                    - sao_paulo
-                    - rio_de_janeiro
-                    - brasilia
-                    - curitiba
-                    - porto_alegre
-                    - manaus
-                    - fortaleza
-                    - salvador
-                    - belo_horizonte
-                    - recife
-                    - belem
-                    - goiania
-                    - campo_grande
                     # SC — Grande Florianópolis
                     - florianopolis
                     - palhoca
@@ -118,7 +105,8 @@ sources:
               - not_null
 
       # ── open_meteo_daily ──────────────────────────────────────────────────
-      - name: open_meteo_daily
+      - name: daily
+        identifier: open_meteo_daily
         description: >
           Resumo diário com máximas, mínimas, precipitação total, UV e
           horários de nascer/pôr do sol. Populado pelo Airbyte diariamente.

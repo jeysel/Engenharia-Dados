@@ -107,6 +107,12 @@ services:
     profiles:
       - collector
 
+  # ── dbt: instala pacotes (dbt_utils, dbt_expectations, audit_helper) ──────
+  dbt-deps:
+    <<: *dbt-base
+    container_name: weather_dbt_deps
+    command: deps
+
   # ── dbt: valida conexões e profiles ───────────────────────────────────────
   dbt-debug:
     <<: *dbt-base

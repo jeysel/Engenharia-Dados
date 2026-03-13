@@ -108,7 +108,7 @@ snapshots:
 
 # ── Hooks ─────────────────────────────────────────────────────────────────────
 on-run-start:
-  - "{{ log('▶ dbt run iniciado — weather_pipeline v' ~ project.version, info=True) }}"
+  - "{{ log('▶ dbt run iniciado — weather_pipeline', info=True) }}"
   - "{{ log('   Target: ' ~ target.name ~ ' | Profile: ' ~ target.type, info=True) }}"
 
 on-run-end:

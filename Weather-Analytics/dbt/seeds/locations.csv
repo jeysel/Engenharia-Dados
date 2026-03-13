@@ -1,17 +1,4 @@
 location_id,city_name,state_name,state_code,country,region,latitude,longitude,altitude_m,population_class
-sao_paulo,São Paulo,São Paulo,SP,Brasil,Sudeste,-23.5505,-46.6333,760,mega
-rio_de_janeiro,Rio de Janeiro,Rio de Janeiro,RJ,Brasil,Sudeste,-22.9068,-43.1729,10,mega
-brasilia,Brasília,Distrito Federal,DF,Brasil,Centro-Oeste,-15.7975,-47.8919,1172,large
-curitiba,Curitiba,Paraná,PR,Brasil,Sul,-25.4284,-49.2733,934,large
-porto_alegre,Porto Alegre,Rio Grande do Sul,RS,Brasil,Sul,-30.0346,-51.2177,10,large
-manaus,Manaus,Amazonas,AM,Brasil,Norte,-3.1190,-60.0217,92,large
-fortaleza,Fortaleza,Ceará,CE,Brasil,Nordeste,-3.7172,-38.5433,21,large
-salvador,Salvador,Bahia,BA,Brasil,Nordeste,-12.9722,-38.5014,8,large
-belo_horizonte,Belo Horizonte,Minas Gerais,MG,Brasil,Sudeste,-19.9167,-43.9345,852,large
-recife,Recife,Pernambuco,PE,Brasil,Nordeste,-8.0539,-34.8811,4,large
-belem,Belém,Pará,PA,Brasil,Norte,-1.4558,-48.5044,13,medium
-goiania,Goiânia,Goiás,GO,Brasil,Centro-Oeste,-16.6869,-49.2648,741,large
-campo_grande,Campo Grande,Mato Grosso do Sul,MS,Brasil,Centro-Oeste,-20.4428,-54.6460,532,medium
 florianopolis,Florianópolis,Santa Catarina,SC,Brasil,Sul,-27.5954,-48.5480,3,large
 palhoca,Palhoça,Santa Catarina,SC,Brasil,Sul,-27.6444,-48.6694,5,medium
 santo_amaro_da_imperatriz,Santo Amaro da Imperatriz,Santa Catarina,SC,Brasil,Sul,-27.6936,-48.7697,14,small

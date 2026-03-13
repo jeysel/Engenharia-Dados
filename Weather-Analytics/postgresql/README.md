@@ -49,7 +49,7 @@ Edite o `.env` com suas credenciais de PostgreSQL, dbt e GCP.
 2. IAM e Admin -> Service Accounts -> Create Service Account
 3. Papel sugerido: Proprietario
 4. Aba Chaves -> Add Key -> Create new key -> JSON -> salve como:
-   `postgresql\secrets\gcp-service-account.json` (pasta: /postgresql/screts)
+   `postgresql\secrets\gcp-service-account.json`
 5. Informe o ID do projeto no `.env`: `GCP_PROJECT_ID=seu-projeto-gcp`
 
 ### Passo 3 — Configurar o dbt (profiles.yml)
@@ -74,35 +74,41 @@ docker compose up -d postgres
 # Sobe o coletor
 docker compose --profile collector up -d collector
 
-# Configuração e uso do coletor
+# Configuração e carga com o coletor
 postgresql\collector\README.md
 ```
 
 ### Passo 5 — Executar o dbt
 
+> Execute o coletor (`collector/README.md`) antes de continuar.
+> A imagem dbt já foi construída no Passo 4 (`docker compose build`).
+
 ```bash
-# Validar conexao
+# 1. Instalar pacotes dbt (apenas na 1ª vez ou quando packages.yml mudar)
+docker compose run --rm dbt-deps
+
+# 2. Validar conexão
 docker compose run --rm dbt-debug
 
-# Carregar seeds (locations.csv)
+# 3. Carregar seeds (locations.csv)
 docker compose run --rm dbt-seed
 
-# Executar modelos
+# 4. Executar modelos
 docker compose run --rm dbt-run
 
-# Validar dados
+# 5. Validar dados
 docker compose run --rm dbt-test
 ```
 
 ---
 
-## Documentacao dbt (http://localhost:8080)
+## Documentacao dbt 
 
 ```bash
 docker compose run --rm dbt-docs-generate
 docker compose run --rm --service-ports dbt-docs
 ```
-
+Acessar: http://localhost:8080
 ---
 
 ## Strings de conexao (para o Airbyte)

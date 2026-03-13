@@ -1,3 +1,12 @@
+{% macro generate_schema_name(custom_schema_name, node) -%}
+  {%- if custom_schema_name is none -%}
+    {{ target.schema }}
+  {%- else -%}
+    {{ custom_schema_name | trim }}
+  {%- endif -%}
+{%- endmacro %}
+
+
 {% macro wmo_code_to_label(wmo_code_column) %}
   /*
     Converte códigos WMO (World Meteorological Organization) para labels legíveis.

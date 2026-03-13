@@ -27,33 +27,26 @@ Airbyte (Source: PostgreSQL → Destination: BigQuery)
 ## Uso
 
 ```bash
-
-# Adiciona permissão ao usuário weather_user
-docker exec -it weather_postgres psql -U postgres -d weather_staging -c "GRANT weather_writer TO weather_user;"
-
-docker exec -it weather_postgres psql -U postgres -d weather_staging -c "GRANT INSERT, UPDATE ON raw.open_meteo_hourly, raw.open_meteo_daily TO weather_writer;"
-
-
 # Executa uma vez (últimos 7 dias)
 docker exec weather_postgres python3 /opt/collector/collector.py --mode once
 
 # Backfill histórico
-docker exec weather_postgres python3 /opt/collector/collector.py \
-  --mode backfill --start 2024-01-01 --end 2024-12-31
+docker exec weather_postgres python3 /opt/collector/collector.py --mode backfill --start 2024-01-01 --end 2024-12-31
 
 # Loop agendado (00:30, 06:30, 12:30, 18:30 BRT)
 docker compose --profile collector up -d collector
 docker logs -f weather_collector
 ```
 
+# Retorne para o Guia postgresql\README.md e siga com o passo: ### Passo 5 — Executar o dbt
+
 ## Localizações monitoradas
 
-Configuradas diretamente no código — lista `LOCATIONS` em `collector.py`.
-31 localizações no total:
-- 13 capitais e grandes centros brasileiros
-- 18 municípios de Santa Catarina, organizados em 5 regiões:
-  - Grande Florianópolis: Florianópolis, Palhoça, Santo Amaro da Imperatriz, Angelina
-  - Litoral Sul: Garopaba, Imbituba, Laguna, Tubarão, Criciúma, Araranguá
-  - Serra / Planalto: Lages, Campos Novos, Joaçaba
-  - Litoral Norte / Vale do Itajaí: Balneário Camboriú, Itajaí, Joinville
-  - Oeste: Chapecó, São Miguel do Oeste
+18 municípios de Santa Catarina, organizados em 5 regiões
+(configurados na lista `LOCATIONS` em `collector.py` e em `dbt/seeds/locations.csv`):
+
+- Grande Florianópolis: Florianópolis, Palhoça, Santo Amaro da Imperatriz, Angelina
+- Litoral Sul: Garopaba, Imbituba, Laguna, Tubarão, Criciúma, Araranguá
+- Serra / Planalto: Lages, Campos Novos, Joaçaba
+- Litoral Norte / Vale do Itajaí: Balneário Camboriú, Itajaí, Joinville
+- Oeste: Chapecó, São Miguel do Oeste

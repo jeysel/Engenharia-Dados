@@ -13,7 +13,7 @@ latest_load AS (
     SELECT
         location_id,
         MAX(_extracted_at) AS latest_extracted_at
-    FROM {{ source('open_meteo', 'open_meteo_daily') }}
+    FROM {{ source('open_meteo', 'daily') }}
     GROUP BY location_id
 ),
 
