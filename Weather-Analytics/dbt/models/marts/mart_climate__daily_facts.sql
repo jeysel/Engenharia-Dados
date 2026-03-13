@@ -57,10 +57,10 @@ final as (
         extract(year from d.date)::integer              as year,
         extract(month from d.date)::integer             as month,
         extract(day from d.date)::integer               as day,
-        format_date('%Y-%m', d.date)                    as year_month,
-        extract(dayofweek from d.date)::integer         as day_of_week,
+        to_char(d.date, 'YYYY-MM')                         as year_month,
+        extract(dow from d.date)::integer               as day_of_week,
         case
-            when extract(dayofweek from d.date) in (1, 7)
+            when extract(dow from d.date) in (0, 6)
             then true else false
         end                                             as is_weekend,
         extract(quarter from d.date)::integer           as quarter,
@@ -112,7 +112,7 @@ final as (
         -- Horas de sol
         d.sunrise_at,
         d.sunset_at,
-        timestamp_diff(d.sunset_at, d.sunrise_at, minute) / 60.0 as daylight_hours,
+        extract(epoch from (d.sunset_at - d.sunrise_at)) / 3600.0 as daylight_hours,
 
         -- Metadados de pipeline
         d._extracted_at,
