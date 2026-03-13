@@ -95,12 +95,6 @@ docker logs -f weather_collector
 Roda automaticamente às 00:30, 06:30, 12:30 e 18:30 (horário de Brasília).
 ```
 
-
-## Configurar o Airbyte (ver airbyte/README.md)
-
-* Acessar http://localhost:9000 e siga o guia: Weather-Analytics\airbyte\README.md
-
-
 ##  Configurar o e Executar o dbt
 
 * Siga o guia: Weather-Analytics\dbt\README.md
@@ -109,6 +103,11 @@ docker compose run --rm dbt-seed
 docker compose run --rm dbt-build                  # dev (PostgreSQL)
 DBT_TARGET=prod docker compose run --rm dbt-build  # prod (BigQuery)
 
+
+## Configurar o Airbyte (ver airbyte/README.md)
+
+* Acessar http://localhost:9000 e 
+* Siguir o guia: Weather-Analytics\airbyte\README.md
 
 
 ## Visualizar os dashboards (ver evidence/README.md)

@@ -27,20 +27,18 @@ Busque e selecione: **PostgreSQL**
 
 ### 1.2 Preencher os campos
 
-| Campo | Valor |
-|-------|-------|
-| Source name | `weather-postgres-raw` |
-| Host | `host.docker.internal` (Airbyte roda em Docker via abctl) |
-| Port | `5432` |
-| Database | `weather_staging` |
-| Username | `airbyte_user` |
-| Password | senha definida em `postgresql/init/01_schemas.sql` — variável `airbyte_pass_troque` (altere antes de usar em produção) |
-| Default Schema | `raw` |
-| SSL mode | `disable` (rede local) |
+* Source name -> `weather-postgres-raw` 
+* Host -> `host.docker.internal` (Airbyte roda em Docker via abctl) 
+* Port -> `5432` 
+* Database -> `weather_staging` 
+* Username -> `airbyte_user` 
+* Password -> `airbyte_pass_troque` -> Definido em: `postgresql/init/01_schemas.sql` — variável `airbyte_pass_troque` (altere antes de usar em produção) 
+* Default Schema -> `raw` 
+* SSL mode -> `disable` (rede local) 
 
-### 1.3 Replication method
+### 1.3 Advanced -> Update method
 
-Selecione: **Xmin System Column**
+Selecione: **Detect Changes with Xmin System Column**
 
 > Esta é a forma mais simples de replicação incremental no PostgreSQL.
 > Não requer configuração de WAL ou slots de replicação.
@@ -51,9 +49,46 @@ Alternativa (se preferir): **Logical Replication (CDC)**
 - Adicione `wal_level = logical` ao arquivo `config/postgresql.conf.append`
 - Reinicie o container após adicionar
 
-### 1.4 Testar e salvar
+### 1.4 Salvar
 
-**Test connection** → **Set up source**
+Clique em **Set up source** — o Airbyte testa a conexão automaticamente ao salvar.
+
+> **Erro HTTP 502 persistente?** O Airbyte v2.0.1 tem um bug onde o workflow `ConnectorCommandWorkflow`
+> na fila `ui_commands` do Temporal não é processado pelo worker, causando timeout no "Set up source".
+
+> **Criar o source diretamente via API** (bypass do check connection da UI):
+>
+> **1. Obter token de acesso:**
+> ```powershell
+> $RESPONSE = Invoke-RestMethod -Uri "http://localhost:9000/api/v1/applications/token" `
+>   -Method POST -ContentType "application/json" `
+>   -Body '{"client_id":"<client-id>","client_secret":"<client-secret>"}'
+> $TOKEN = $RESPONSE.access_token
+> ```
+> *(client-id e client-secret obtidos com: `abctl local credentials`)*
+>
+> **2. Criar o source PostgreSQL:**
+> ```powershell
+> Invoke-RestMethod -Uri "http://localhost:9000/api/v1/sources/create" `
+>   -Method POST -ContentType "application/json" `
+>   -Headers @{Authorization="Bearer $TOKEN"} `
+>   -Body '{
+>     "workspaceId": "8aaf46cf-5b71-4845-a69b-ab91892e0c62",
+>     "sourceDefinitionId": "decd338e-5647-4c0b-adf4-da0e75f5a750",
+>     "name": "weather-postgres-raw",
+>     "connectionConfiguration": {
+>       "host": "host.docker.internal",
+>       "port": 5432,
+>       "database": "weather_staging",
+>       "username": "airbyte_user",
+>       "password": "airbyte_pass_troque",
+>       "schemas": ["raw"],
+>       "ssl": false,
+>       "replication_method": {"method": "Xmin"}
+>     }
+>   }'
+> ```
+> O source aparecerá em **Sources** na UI normalmente após criado.
 
 ---
 
@@ -84,9 +119,9 @@ Selecione: **Standard Inserts**
 > Para volumes maiores (>1M linhas/dia), considere **Batch Loading via GCS**,
 > que requer um bucket GCS adicional mas é significativamente mais eficiente.
 
-### 2.4 Testar e salvar
+### 2.4 Salvar
 
-**Test connection** → **Set up destination**
+Clique em **Set up destination** — o Airbyte testa a conexão automaticamente ao salvar.
 
 ---
 
