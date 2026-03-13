@@ -30,11 +30,11 @@ Busque e selecione: **PostgreSQL**
 | Campo | Valor |
 |-------|-------|
 | Source name | `weather-postgres-raw` |
-| Host | `localhost` (ou `host.docker.internal` se o Airbyte rodar em Docker) |
+| Host | `host.docker.internal` (Airbyte roda em Docker via abctl) |
 | Port | `5432` |
 | Database | `weather_staging` |
 | Username | `airbyte_user` |
-| Password | senha definida no passo 8 do README do PostgreSQL |
+| Password | senha definida em `postgresql/init/01_schemas.sql` — variável `airbyte_pass_troque` (altere antes de usar em produção) |
 | Default Schema | `raw` |
 | SSL mode | `disable` (rede local) |
 

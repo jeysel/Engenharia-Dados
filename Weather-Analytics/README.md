@@ -68,7 +68,7 @@ Weather-Analytics/
 
 ```
 
-## 🐳 Configurar Container Docker para executar: PostgreSQL, integração com API Open-Meteo e Google BigQuery
+## 🐳 Configurar Container Docker para executar: PostgreSQL, integração com API Open-Meteo e DBT
 
 
 * Subir e configurar seguindo os passos disponíveis em: postgresql/README.md

@@ -124,6 +124,11 @@ Acessar: http://localhost:8080
 
 ---
 
+## Configuração e funcionamento do DBT, Coletor e PostgresSQL concluidos
+
+* Retornar para:\Weather-Analytics\README.md
+
+
 ## Comandos uteis
 
 ```bash
