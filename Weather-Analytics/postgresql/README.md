@@ -117,28 +117,7 @@ docker exec -it weather_postgres \
 
 Saída esperada: `raw`, `staging`, `intermediate`, `marts`, `seeds`.
 
-### Passo 10 — Primeira coleta
 
-```bash
-docker exec weather_postgres \
-  python3 /opt/collector/collector.py --mode once
-
-# Verificar dados
-docker exec weather_postgres \
-  psql -U weather_user -d weather_staging -c \
-  "SELECT location_id, COUNT(*) FROM raw.open_meteo_daily GROUP BY 1 ORDER BY 1;"
-```
-
-### Passo 11 — Coletor agendado
-
-```bash
-docker compose --profile collector up -d collector
-docker logs -f weather_collector
-```
-
-Roda automaticamente às 00:30, 06:30, 12:30 e 18:30 (horário de Brasília).
-
----
 
 ## Strings de conexão (para o Airbyte)
 
