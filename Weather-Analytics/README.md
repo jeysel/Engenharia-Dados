@@ -1,6 +1,6 @@
 # Projeto: Weather Analytics Pipeline
 # Open-Meteo API → collector.py (PostgreSQL) → Airbyte → BigQuery → dbt → BigQuery DW
-teste
+
 ## Estrutura
 
 ```
@@ -12,7 +12,25 @@ Weather-Analytics/
 └── docs/           # Arquitetura e decisões
 ```
 
+## Weather Analytics Pipeline - Arquitetura em camadas
+
+| Camada | Tecnologia | O que faz |
+|--------|-----------|-----------|
+| Coleta | `collector.py` (Python no container) | Busca API Open-Meteo → grava em `raw.*` |
+| Staging | PostgreSQL 17 | Armazena dados raw e serve como Source para o Airbyte |
+| Ingest | Airbyte (conector nativo PostgreSQL → BigQuery) | Replica `raw.*` para BigQuery `weather_raw` |
+| Transform | dbt | Lê `weather_raw` (prod) ou `raw` (dev) → materializa marts |
+| Warehouse | BigQuery | Dataset `weather_dw` com tabelas analíticas finais |
+| Visualização | Evidence.dev | Dashboards interativos gerados a partir dos marts do dbt |
+
+## Pré-requisitos
+
+- Docker + Docker Compose
+- Airbyte já instalado e rodando em `http://localhost:9000`
+- Conta GCP com BigQuery e um Service Account com roles:
+  `BigQuery Data Editor` + `BigQuery Job User`
 ---
+
 ## 🚀 Configuração Inicial
 
 ### Pré-requisitos
@@ -50,46 +68,60 @@ Weather-Analytics/
 
 ```
 
-## Weather Analytics Pipeline - Arquitetura em camadas
+## 🐳 Criar Container Docker para executar o PostgreSQL,  e a integração com API Open-Meteo e Google BigQuery
 
-| Camada | Tecnologia | O que faz |
-|--------|-----------|-----------|
-| Coleta | `collector.py` (Python no container) | Busca API Open-Meteo → grava em `raw.*` |
-| Staging | PostgreSQL 17 | Armazena dados raw e serve como Source para o Airbyte |
-| Ingest | Airbyte (conector nativo PostgreSQL → BigQuery) | Replica `raw.*` para BigQuery `weather_raw` |
-| Transform | dbt | Lê `weather_raw` (prod) ou `raw` (dev) → materializa marts |
-| Warehouse | BigQuery | Dataset `weather_dw` com tabelas analíticas finais |
-| Visualização | Evidence.dev | Dashboards interativos gerados a partir dos marts do dbt |
 
-## Pré-requisitos
+* 1. Subir e configurar seguindo os passos disponíveis em: postgresql/README.md
 
-- Docker + Docker Compose
-- Airbyte já instalado e rodando em `http://localhost:9000`
-- Conta GCP com BigQuery e um Service Account com roles:
-  `BigQuery Data Editor` + `BigQuery Job User`
+* 2. Primeira coleta - Pré requisito: Configuração concluída conforme: postgresql/README.md
 
-## Ordem de execução
+```
+docker exec weather_postgres python3 /opt/collector/collector.py --mode once
+```
 
-```bash
-# 1. Subir e configurar o PostgreSQL (ver postgresql/README.md)
-cd postgresql && docker compose up -d postgres
-# Siga o guia: Weather-Analytics\postgresql\README.md
+* 3. Verificar dados
 
+```
+docker exec weather_postgres psql -U weather_user -d weather_staging -c  "SELECT location_id, COUNT(*) FROM raw.open_meteo_daily GROUP BY 1 ORDER BY 1;"
+```
+
+* 4. Coletor agendado
+
+```
+docker compose --profile collector up -d collector
+docker logs -f weather_collector
+
+
+Roda automaticamente às 00:30, 06:30, 12:30 e 18:30 (horário de Brasília).
+```
+
+
+
+
+### Configurar o Airbyte (ver airbyte/README.md)
+```
 # 2. Configurar o Airbyte (ver airbyte/README.md)
 # Acesse http://localhost:9000 e siga o guia: Weather-Analytics\airbyte\README.md
+```
 
-# 3. Executar o dbt
+
+# 3. Configurar o e Executar o dbt
+```
 # Siga o guia: Weather-Analytics\dbt\README.md
 cd ../dbt
 docker compose run --rm dbt-seed
 docker compose run --rm dbt-build            # dev (PostgreSQL)
 DBT_TARGET=prod docker compose run --rm dbt-build  # prod (BigQuery)
+```
+
 
 # 4. Visualizar os dashboards (ver evidence/README.md)
+
+```
 cd ../evidence
 npm install
 npm run sources
-npm run dev                                  # http://localhost:3000
+npm run dev    # http://localhost:3000
 ```
 
 ---
